@@ -33,11 +33,15 @@ PHASE_TITLE = {
     "A": "Attention backend", "B": "--fast optimizations", "C": "Offload & memory",
     "D": "Device placement", "E": "Sampler / scheduler", "F": "cfg and steps",
     "G": "Sigma shift", "H": "Encoder & VAE precision", "I": "Single-card control",
-    "J": "Geometry scaling",
+    "J": "Geometry scaling", "K": "Step caching, compile & sage3",
+    "L": "Resolution scaling", "M": "DisTorch2 sharding",
+    "P": "Pipeline split (shared server)", "Q": "Pipeline split (isolated server)",
 }
 # Phases whose rows differ in WORK DONE, not just speed — ranking them by
-# seconds would just pick the cheapest setting and call it best.
-NOT_RANKABLE = {"F", "J", "E", "G"}
+# seconds would just pick the cheapest setting and call it best. L shrinks the
+# canvas (same class as J: fewer tokens, not a faster path), K trades fidelity
+# (cache skips / FP4) — both are judged, not ranked.
+NOT_RANKABLE = {"F", "J", "E", "G", "L", "K"}
 
 
 def load():
@@ -109,15 +113,29 @@ def main():
 
     # ---- pick winners -------------------------------------------------------
     launch_flags, workflow, decisions = [], {}, []
-    # Attention first: prefer the CONFIRM ranking when it exists, because
-    # attention's share of total work grows with sequence length and the probe
-    # systematically understates it.
+
+    def ranked(ph):
+        """Candidates for phase ph, and which stage they came from.
+
+        Prefer CONFIRM, because attention's share of total work grows with
+        sequence length and the probe systematically understates it — but only
+        when confirm actually holds a CONTEST. A stage with one successful row
+        has nothing to rank: `winner` would return that row unopposed and the
+        report would announce it as the phase winner. That is how a lone
+        confirm-stage A0 came to be published as "attention backend winner:
+        (defaults)" while the four-row probe stage had sage2 ahead of defaults
+        by 12%.
+        """
+        conf = [r for r in by_phase_confirm.get(ph, []) if r.get("ok")]
+        if len(conf) >= 2:
+            return by_phase_confirm[ph], "confirm"
+        return by_phase_probe.get(ph, []), "probe"
+
     for ph in ("A", "B", "C", "H"):
-        cands = by_phase_confirm.get(ph) or by_phase_probe.get(ph) or []
+        cands, stage = ranked(ph)
         w = winner(cands)
         if not w:
             continue
-        stage = "confirm" if by_phase_confirm.get(ph) else "probe"
         new = [f for f in (w.get("flags") or []) if f not in launch_flags]
         launch_flags += new
         decisions.append((ph, w["row"], " ".join(w.get("flags") or []) or "(defaults)",
@@ -135,8 +153,12 @@ def main():
         "launch_flags": launch_flags,
         "workflow": workflow,
         "source": f"analyse.py over {len(rows)} runs",
-        "note": ("F/J/E/G are NOT auto-selected: their rows change how much work is done or "
-                 "how the output looks, so 'fastest' is not 'best'. See FINDINGS.md."),
+        # Derive the list rather than restating it: the set has grown (K and L
+        # joined it) and a hand-written note silently goes stale, telling the
+        # reader a phase was auto-selected when it was not.
+        "note": (f"{'/'.join(sorted(NOT_RANKABLE))} are NOT auto-selected: their rows change "
+                 "how much work is done or how the output looks, so 'fastest' is not 'best'. "
+                 "See FINDINGS.md."),
     }
     with open(os.path.join(HERE, "tuned.json"), "w") as fh:
         json.dump(tuned, fh, indent=2)

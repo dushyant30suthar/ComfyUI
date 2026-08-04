@@ -97,3 +97,18 @@ measured **2.76 GB/s** — the same wall documented in the llama.cpp prefill wor
 The first real run is what settles it. If it OOMs, it will be at the VAE decode
 after sampling completes: reach for `args = --reserve-vram 2.0` in
 `~/.config/opencode/providers/comfyui/server.ini`.
+
+## h3-draft-960x544.json — the draft profile (added 2026-08-04)
+
+Same tuned settings as `h3-tuned.json` (EasyCache 0.4, cfg 1.0, euler/simple,
+sage2 via the launch flags) on a 960x544 canvas instead of 1344x768 native.
+
+Measured, 5.2s clip, 10 steps, no cache: **141.7s against ~343s** — 2.4x. The
+saving is larger than the token count alone predicts, because smaller
+activations leave room for more of the 21 GB DiT to stay VRAM-resident, so the
+per-step host-RAM streaming shrinks as well (peak cuda:0 rises from 13.7 GB to
+15.2 GB). At 15.1s the projection is ~9-12 min against ~34.5 min native.
+
+Use it to iterate on a shot, then re-render the keeper with `h3-tuned.json`.
+The quality trade has NOT been judged yet — `bench/quality.py` renders this
+canvas against native at a fixed prompt and seed for exactly that purpose.

@@ -24,3 +24,10 @@ web_custom_versions/
 filtered-openapi.yaml
 uv.lock
 .comfy_environment
+
+# H3 benchmark artefacts
+bench/h3-logs/
+bench/*-server.log
+bench/gen.jsonl
+bench/quality.jsonl
+custom_nodes_disabled_*/

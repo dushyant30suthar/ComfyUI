@@ -66,7 +66,8 @@ def build_workflow(width, height, length, steps, cfg, sampler, scheduler,
                    model_device="default", clip_device="default", vae_device="default",
                    seed=42, unet=FL2VA, prompt=PROMPT,
                    cache=None, cache_threshold=0.2, cache_start=0.15, cache_end=0.95,
-                   compile_backend=None, sage3=False, distorch=None, dualpipe=None):
+                   compile_backend=None, sage3=False, distorch=None, dualpipe=None,
+                   stop_after=None, tiled_decode=0, chunk_heads=0):
     """API-format graph, structurally identical to workflows/h3/h3-t2v-dualgpu.json.
 
     Device nodes are inserted only when not "default": an identity
@@ -138,6 +139,16 @@ def build_workflow(width, height, length, steps, cfg, sampler, scheduler,
         g["22"] = {"class_type": "SageAttention3Select", "inputs": {"model": sampled_model}}
         sampled_model = ["22", 0]
 
+    # Head-chunked SageAttention. Same override hook as sage3, mutually exclusive
+    # with it. Cuts sage's int8 scratch to ~1/groups by processing heads in
+    # groups — exact, since heads are independent. The 3.64 GiB scratch at the
+    # 15.1s shape is what makes native 15s fail; 4 groups recovers 1.64 GiB
+    # against a measured 0.73 GiB shortfall.
+    if chunk_heads:
+        g["24"] = {"class_type": "SageAttentionChunked",
+                   "inputs": {"model": sampled_model, "groups": int(chunk_heads)}}
+        sampled_model = ["24", 0]
+
     # Step-caching: reuse a denoise step's output when the trajectory has moved
     # less than reuse_threshold. H3 is guidance-distilled but NOT step-distilled,
     # so there is no lightning LoRA to cut steps for free — caching is the only
@@ -168,7 +179,41 @@ def build_workflow(width, height, length, steps, cfg, sampler, scheduler,
                          "positive": ["6", 0], "negative": ["7", 0],
                          "latent_image": ["6", 1], "denoise": 1.0}}
     g["9"] = {"class_type": "LTXVSeparateAVLatent", "inputs": {"av_latent": ["8", 0]}}
-    g["10"] = {"class_type": "VAEDecode", "inputs": {"samples": ["9", 0], "vae": vvae_src}}
+
+    # Overhead probe: end the graph after the sampler and write the video latent
+    # instead of decoding it. Differencing against the full graph at the same
+    # step count isolates VAE decode + mux from model load/evict transitions —
+    # the two halves of the ~84s fixed per-clip cost that the step arithmetic
+    # exposes but cannot attribute.
+    #
+    # It has to save the SEPARATED video latent, not the sampler's own output:
+    # H3 returns a packed audio+video NestedTensor and SaveLatent does
+    # samples["samples"].contiguous(), which NestedTensor has no method for.
+    # LTXVSeparateAVLatent is a cheap split, so it does not pollute the
+    # measurement.
+    #
+    # CAVEAT for whoever runs this: give the probe row a DIFFERENT SEED from the
+    # full row. ComfyUI caches node outputs across prompts on one server, so an
+    # otherwise-identical probe reuses the full row's sampler result, measures
+    # only the save, and quietly reports the entire fixed cost as VAE+mux.
+    if stop_after == "sampler":
+        g["14"] = {"class_type": "SaveLatent",
+                   "inputs": {"samples": ["9", 0], "filename_prefix": "bench/probe"}}
+        return g
+
+    # Video VAE decode, whole-clip or chunked. At 362 frames the one-shot decode
+    # materialises the entire pixel tensor at once and exhausts host RAM on this
+    # 31 GB box — measured 2026-08-04: sampling completed cleanly in 8:33 and the
+    # run then died at MemAvailable=0 with swap +4337 MiB, which is the freeze
+    # signature. temporal_size decodes that many frames at a time instead, which
+    # is what makes long clips reachable here at all.
+    if tiled_decode:
+        g["10"] = {"class_type": "VAEDecodeTiled",
+                   "inputs": {"samples": ["9", 0], "vae": vvae_src,
+                              "tile_size": 512, "overlap": 64,
+                              "temporal_size": int(tiled_decode), "temporal_overlap": 8}}
+    else:
+        g["10"] = {"class_type": "VAEDecode", "inputs": {"samples": ["9", 0], "vae": vvae_src}}
     g["11"] = {"class_type": "LTXVAudioVAEDecode",
                "inputs": {"samples": ["9", 1], "audio_vae": avae_src}}
     g["12"] = {"class_type": "CreateVideo",
@@ -316,6 +361,28 @@ WORKFLOW_PHASES.append(
     ]))
 
 
+# Fixed per-clip cost. Solving the K rows for a linear model (K0 = 10 real
+# steps, K2 = 6 after EasyCache skips 4) gives 28.3 s/step and 83.7 s that is
+# NOT sampling — 33% of a tuned 10-step run and 20% of the deployed 20-step
+# one. Nothing in the matrix measured it, and the two candidate causes want
+# opposite fixes (VAE decode -> phase H precision flags; model load/evict
+# transitions -> phase C offload flags), so attribute it before spending 2
+# hours on either. Differencing N0 against N1 at the same step count is the
+# whole experiment; N2 checks that the cost is per-clip, not per-step.
+WORKFLOW_PHASES.append(
+    ("N", "fixed-overhead decomposition — what the 84s that is not sampling actually is", [
+        ("N0", dict(steps=1), "full graph, 1 step: everything except sampling, plus one step"),
+        ("N1", dict(steps=1, stop_after="sampler", seed=43),
+         "same, stopping at the sampler: no VAE decode, no mux. SEED DIFFERS ON "
+         "PURPOSE — an identical one reuses N0's cached sampler output and measures nothing"),
+        ("N2", dict(steps=3), "3 steps: confirms the per-step slope and that the rest is fixed"),
+        ("N3", dict(steps=1, seed=44),
+         "N0 REPEATED WARM. N0 runs first on a fresh server and pays for staging "
+         "the checkpoint; N3 is the identical graph once everything is hot, so "
+         "N0-N3 IS the first-run penalty. Seed differs only to defeat node caching"),
+    ]))
+
+
 # The largest untested lever. Attention is quadratic in tokens and tokens scale
 # with W*H, so shrinking the canvas buys back far more than any flag. This is
 # also how H3's own 2K path works: generate at a 768-ish short edge, then
@@ -369,6 +436,22 @@ WORKFLOW_PHASES.append(("Q", "pipeline split, isolated server", [
     ("Q1", dict(dualpipe=22, cache="easy", cache_threshold=0.4),
      "split 22/28 + EasyCache 0.4 — balanced free (~3.8G/card) and the cache's measured -2.7 GB peak buys the workspace"),
 ]))
+
+
+# Where to cut. Q1 at 22 puts 28 of 50 blocks (~56% of the weights) on cuda:1
+# and drove it to 15.65 GB of 15.5 GiB usable — full enough that the vbar arena
+# has to evict and re-fault pages, which reintroduces exactly the host-RAM
+# streaming the split exists to remove. cuda:0 additionally carries the
+# embeddings, token refiner and final_layer, so an even block count is NOT an
+# even memory split; the balance point has to be measured. Higher index = fewer
+# blocks on cuda:1.
+WORKFLOW_PHASES.append(
+    ("R", "split balance — where to cut so neither arena thrashes", [
+        ("R1", dict(dualpipe=25, cache="easy", cache_threshold=0.4), "25/25 blocks"),
+        ("R2", dict(dualpipe=28, cache="easy", cache_threshold=0.4), "28/22 — cuda:1 gets headroom"),
+        ("R3", dict(dualpipe=31, cache="easy", cache_threshold=0.4), "31/19"),
+        ("R4", dict(dualpipe=34, cache="easy", cache_threshold=0.4), "34/16 — cuda:0 carries most of it"),
+    ]))
 
 
 def phase(letter):

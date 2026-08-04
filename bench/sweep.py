@@ -63,19 +63,25 @@ class Server:
     """One ComfyUI process per launch config. Restarting is the only way to
     change an attention backend or a memory flag — they are read at import."""
 
-    def __init__(self, flags):
+    def __init__(self, flags, env=None):
         self.flags = list(flags)
+        # Some knobs are not ComfyUI flags at all — PYTORCH_CUDA_ALLOC_CONF in
+        # particular is read by the caching allocator at first CUDA use, so it
+        # can only be set for the child process, never at runtime.
+        self.env = dict(env or {})
         self.proc = None
 
     def __enter__(self):
         stop_any()
         log = open(LOG, "a")
-        log.write(f"\n\n{'='*70}\nlaunch: {' '.join(self.flags) or '(defaults)'}\n{'='*70}\n")
+        envstr = " ".join(f"{k}={v}" for k, v in self.env.items())
+        log.write(f"\n\n{'='*70}\nlaunch: {envstr} {' '.join(self.flags) or '(defaults)'}\n{'='*70}\n")
         log.flush()
         self.proc = subprocess.Popen(
             [PY, "main.py", "--port", str(PORT)] + self.flags,
             cwd=ROOT, stdout=log, stderr=subprocess.STDOUT,
             start_new_session=True,
+            env={**os.environ, **self.env} if self.env else None,
         )
         deadline = time.time() + BOOT_TIMEOUT
         while time.time() < deadline:
@@ -204,6 +210,17 @@ def main():
                     help='launch flags held fixed for all servers, one string: --base-flags="--use-sage-attention --disable-cuda-malloc"')
     ap.add_argument("--length", type=int, help="override frame count")
     ap.add_argument("--steps", type=int, help="override step count")
+    ap.add_argument("--rows", default="",
+                    help="comma-separated row names to run, e.g. --rows K5,K10,K11; "
+                         "default is every row in the phase")
+    ap.add_argument("--env", action="append", default=[], metavar="K=V",
+                    help="environment variable for every server launched, repeatable: "
+                         "--env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True")
+    ap.add_argument("--warmup", action="store_true",
+                    help="run one discarded 1-step generation before a workflow phase's "
+                         "rows, so the first measured row is not charged for staging the "
+                         "checkpoint (measured at ~24s on this box). Use it whenever the "
+                         "rows of a phase are compared against EACH OTHER")
     ap.add_argument("--list", action="store_true")
     args = ap.parse_args()
 
@@ -224,7 +241,17 @@ def main():
     print(f"results -> {RESULTS}\n")
 
     args.base_flags = args.base_flags.split() if isinstance(args.base_flags, str) else args.base_flags
+    env = {}
+    for item in args.env:
+        if "=" not in item:
+            print(f"--env needs K=V, got {item!r}")
+            return 2
+        k, v = item.split("=", 1)
+        env[k] = v
+    if env:
+        print(f"env: {env}")
     launch_names = {n for n, _, _ in matrix.LAUNCH_PHASES}
+    only = {r.strip() for r in args.rows.split(",") if r.strip()}
 
     for letter in args.phases:
         try:
@@ -232,6 +259,11 @@ def main():
         except KeyError:
             print(f"unknown phase {letter}")
             continue
+        if only:
+            rows = [r for r in rows if r[0] in only]
+            if not rows:
+                print(f"phase {name}: no rows match --rows")
+                continue
         print(f"\n### phase {name}: {desc}")
 
         if name in launch_names:
@@ -248,9 +280,9 @@ def main():
                 combined = list(args.base_flags) + list(flags)
                 print(f"  -- {row}: {' '.join(combined) or '(defaults)'}  {note}")
                 meta = dict(phase=name, row=row, stage=stage, flags=combined, note=note,
-                            ts=int(time.time()))
+                            env=env or None, ts=int(time.time()))
                 try:
-                    with Server(combined):
+                    with Server(combined, env):
                         emit(run_one(base, meta))
                 except Exception as e:
                     emit({**meta, "ok": False, "error": "launch", "detail": str(e)[:300]})
@@ -258,11 +290,26 @@ def main():
             # One server for the whole phase — these knobs are per-graph.
             print(f"  (one server, base flags: {' '.join(args.base_flags) or 'defaults'})")
             try:
-                with Server(args.base_flags):
+                with Server(args.base_flags, env):
+                    if args.warmup:
+                        # The first generation on a fresh server pays to stage
+                        # the 21 GB checkpoint — measured at ~24s here (phase N:
+                        # a 3-step warm run came in 24s under what the
+                        # cold-derived model predicted). In a phase whose rows
+                        # are compared against each other, that lands entirely
+                        # on row 1 and reads as if row 1's setting were slower.
+                        # Seed 999 keeps it out of the node cache of every real
+                        # row; the result is deliberately not recorded.
+                        print("  -- warmup (1 step, discarded)")
+                        w = run_one(dict(base, steps=1, seed=999),
+                                    dict(phase=name, row="warmup", stage=stage))
+                        print(f"     warmup {'ok' if w.get('ok') else 'FAILED'} "
+                              f"{w.get('server_s') or '—'}s")
                     for row, overrides, note in rows:
                         params = dict(base, **overrides)
                         meta = dict(phase=name, row=row, stage=stage,
-                                    flags=args.base_flags, note=note, ts=int(time.time()))
+                                    flags=args.base_flags, note=note,
+                                    env=env or None, ts=int(time.time()))
                         emit(run_one(params, meta))
             except Exception as e:
                 print(f"  launch failed: {e}")
