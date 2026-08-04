@@ -87,6 +87,13 @@ def main():
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--draft", action="store_true", help="960x544 instead of native 1344x768")
     ap.add_argument("--name", default="gen", help="filename prefix")
+    ap.add_argument("--first-frame", default="",
+                    help="filename in input/ to animate FROM (image-to-video). The node is "
+                         "called MiniMaxH3ImageToVideo but its image inputs are optional — "
+                         "omitting them is plain text-to-video")
+    ap.add_argument("--last-frame", default="",
+                    help="filename in input/ to animate TO. With --first-frame this "
+                         "interpolates between the two")
     ap.add_argument("--chunk", type=int, default=0, metavar="GROUPS",
                     help="run SageAttention over GROUPS head groups (custom_nodes/sage_chunked). "
                          "Exact — heads are independent. Cuts sage's int8 scratch to ~1/GROUPS, "
@@ -134,9 +141,12 @@ def main():
     params = dict(matrix.PROBE, width=w, height=h, length=args.length, steps=args.steps,
                   cfg=1.0, prompt=prompt, seed=args.seed,
                   cache=None if args.nocache else "easy", cache_threshold=0.4,
-                  tiled_decode=args.tiled, chunk_heads=args.chunk)
+                  tiled_decode=args.tiled, chunk_heads=args.chunk,
+                  first_frame=args.first_frame or None,
+                  last_frame=args.last_frame or None)
     wf = matrix.build_workflow(**params)
-    wf["13"]["inputs"]["filename_prefix"] = f"video/{args.name}"
+    # a name containing "/" writes into that subfolder under output/
+    wf["13"]["inputs"]["filename_prefix"] = args.name if "/" in args.name else f"video/{args.name}"
 
     tok = matrix.tokens(w, h, args.length)
     print(f"{w}x{h}, {args.length} frames ({args.length/24:.1f}s), {args.steps} steps, "

@@ -178,3 +178,60 @@ In `~/Projects/opencode-llama.cpp/docs/`:
   separate from measurement, with every claim tagged VERIFIED / REPORTED /
   UNTESTED.
 - `minimax-h3-video-2026-08-03.md` — the first session: weights, geometry, setup.
+
+---
+
+## 9. Batch production (overnight films)
+
+```bash
+bench/produce.sh <prompts-file> <profile> <output-subfolder>
+bench/assemble.sh <output-subfolder>          # concatenates into one film
+```
+
+**Prompt file format:** prompts separated by BLANK LINES; a prompt may span
+several lines; `#` starts a comment. Write each in H3's documented order —
+Subject → Scene → Action → Camera → Timing → Style → Audio — and name an
+explicit camera move and a timing beat. 15 s is long enough that an unspecified
+shot drifts or stalls halfway.
+
+| profile | canvas / length | real steps | per clip | 12 shots |
+|---|---|---:|---:|---:|
+| `native` | 1344×768, 15.1 s | 20 | 56.7 min | 11.3 h |
+| **`fast`** | **1344×768, 15.1 s** | **10** | **29.6 min** | **5.9 h** |
+| `draft` | 960×544, 15.1 s | 10 | 10.3 min | 2.1 h |
+| `draft-short` | 960×544, 5.2 s | 10 | ~2 min | 25 min |
+
+`fast` is usually the right pick for a finished piece: the resolution ladder
+showed canvas dominates perceived quality and step count is second, so twelve
+native shots beat twenty-four draft ones.
+
+**Properties that matter at 3am:**
+
+- **One server per clip.** Host RAM accumulates across prompts and the third
+  execution thrashes. A ~90 s boot per clip is cheap against losing the batch.
+- **A failure does not stop the batch.** It logs and moves on.
+- **Resumable** — already-rendered shots are skipped, so re-running continues
+  where it stopped.
+- **Silent-fallback detection** — if a clip drops to the slow attention path the
+  log says so, rather than you inferring it from a strange timestamp.
+- **Assembly tolerates gaps.** 9 of 12 shots still produces a 9-shot film in the
+  right order. Better to wake to something watchable.
+
+### Continuity, since the model has no memory between clips
+
+Nothing carries across shots automatically. Describe the recurring subject
+**identically every time** — same colour, same distinguishing features — or it
+will change between cuts. For tighter continuity use `--first-frame` to chain
+from the previous shot's last frame, or reference-to-video when a subject must
+persist across scenes that are not continuous.
+
+### Editing a batch that is already running
+
+`produce.sh` splits the prompt file into temp files **at launch**, so editing the
+source file mid-run changes nothing. To correct a prompt in flight, patch the
+live copies:
+
+```bash
+TD=$(ls -dt /tmp/tmp.* | while read d; do [ -f "$d/001.txt" ] && echo "$d" && break; done)
+sed -i 's/old text/new text/' $TD/*.txt
+```

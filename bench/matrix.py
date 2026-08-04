@@ -67,7 +67,8 @@ def build_workflow(width, height, length, steps, cfg, sampler, scheduler,
                    seed=42, unet=FL2VA, prompt=PROMPT,
                    cache=None, cache_threshold=0.2, cache_start=0.15, cache_end=0.95,
                    compile_backend=None, sage3=False, distorch=None, dualpipe=None,
-                   stop_after=None, tiled_decode=0, chunk_heads=0):
+                   stop_after=None, tiled_decode=0, chunk_heads=0,
+                   first_frame=None, last_frame=None):
     """API-format graph, structurally identical to workflows/h3/h3-t2v-dualgpu.json.
 
     Device nodes are inserted only when not "default": an identity
@@ -169,9 +170,19 @@ def build_workflow(width, height, length, steps, cfg, sampler, scheduler,
         g["21"] = {"class_type": "TorchCompileModel",
                    "inputs": {"model": sampled_model, "backend": compile_backend}}
         sampled_model = ["21", 0]
-    g["6"] = {"class_type": "MiniMaxH3ImageToVideo",
-              "inputs": {"clip": clip_src, "vae": vvae_src, "prompt": prompt,
-                         "width": width, "height": height, "length": length}}
+    # MiniMaxH3ImageToVideo covers t2v AND i2v: first_frame/last_frame are
+    # optional, and omitting both is pure text-to-video. There is no separate
+    # T2V node despite the name. Supplying first_frame animates FROM that image;
+    # supplying both interpolates between them.
+    i2v_inputs = {"clip": clip_src, "vae": vvae_src, "prompt": prompt,
+                  "width": width, "height": height, "length": length}
+    if first_frame:
+        g["25"] = {"class_type": "LoadImage", "inputs": {"image": first_frame}}
+        i2v_inputs["first_frame"] = ["25", 0]
+    if last_frame:
+        g["26"] = {"class_type": "LoadImage", "inputs": {"image": last_frame}}
+        i2v_inputs["last_frame"] = ["26", 0]
+    g["6"] = {"class_type": "MiniMaxH3ImageToVideo", "inputs": i2v_inputs}
     g["7"] = {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["6", 0]}}
     g["8"] = {"class_type": "KSampler",
               "inputs": {"model": sampled_model, "seed": seed, "steps": steps, "cfg": cfg,
