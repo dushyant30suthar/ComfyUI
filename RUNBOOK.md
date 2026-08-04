@@ -226,11 +226,27 @@ bench/lastframe.sh output/journey/shot-002_00001.mp4 chain-003
 .venv/bin/python bench/gen.py --first-frame chain-003.png --prompt "..." ...
 ```
 
-`gen.py` reproduces its seed frame at frame 0 to within 2.7/255, so the cut is
-invisible and the two clips play as one 30 s take. `lastframe.sh` deliberately
-takes the *second*-to-last frame: the final frame of a VAE-decoded clip is the
-most likely to carry temporal-tile edge artifacts, and any artifact there would
-be inherited as the seed of the entire next clip.
+`lastframe.sh` deliberately takes the *second*-to-last frame: the final frame of
+a VAE-decoded clip is the most likely to carry temporal-tile edge artifacts, and
+any artifact there would be inherited as the seed of the entire next clip.
+
+**How exact the join is depends on what you seed with — measured 2026-08-05:**
+
+| seed | frame-0 error vs seed | reads as |
+|---|---:|---|
+| a clean photograph | 2.7/255 | exact |
+| a previously generated frame | **8.6/255** | a small reframe — a mild jump cut |
+
+Seeding from generated output does **not** reproduce the frame. In the measured
+case the subject shifted left and the framing widened slightly; the difference
+image lit up along the whole subject silhouette, which is displacement rather
+than noise. What *does* carry reliably is the scene, the subject's identity, the
+lighting and the action — so the two clips read as continuous footage with an
+edit in it, not as one unbroken take.
+
+Treat a chained boundary as a **cut you control**, not as an invisible splice.
+If the jump reads badly, a ~0.25 s crossfade at that boundary hides it and looks
+deliberate — at the cost of re-encoding (concat stream-copy cannot dissolve).
 
 Chain two or three clips, not ten — each generation inherits the previous one's
 drift, and it compounds.
