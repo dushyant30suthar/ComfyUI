@@ -94,6 +94,21 @@ def main():
     ap.add_argument("--last-frame", default="",
                     help="filename in input/ to animate TO. With --first-frame this "
                          "interpolates between the two")
+    ap.add_argument("--ref", default="",
+                    help="comma-separated filenames in input/ to use as IDENTITY references "
+                         "(reference-to-video). Switches to the ref2va checkpoint. Unlike "
+                         "--first-frame, these are not animated: their subject is carried into "
+                         "a new scene. Address them in the prompt as <Picture 1>, <Picture 2>, "
+                         "... in the order given — an unnamed reference still costs tokens on "
+                         "every step but steers nothing. Max 9")
+    ap.add_argument("--ref-video", default="",
+                    help="comma-separated video filenames in input/ used as references. A "
+                         "previously rendered clip here carries motion and look forward into "
+                         "the next shot. Addressed as <Video 1>, ... Max 3, 2-15s each")
+    ap.add_argument("--ref-size", default="match", choices=["match", "max"],
+                    help="'match' scales references to the generation's pixel area; 'max' uses "
+                         "a 2048px short edge for best identity fidelity and is several times "
+                         "slower, because reference tokens ride through every sampling step")
     ap.add_argument("--chunk", type=int, default=0, metavar="GROUPS",
                     help="run SageAttention over GROUPS head groups (custom_nodes/sage_chunked). "
                          "Exact — heads are independent. Cuts sage's int8 scratch to ~1/GROUPS, "
@@ -138,19 +153,38 @@ def main():
     if args.reserve:
         flags += ["--reserve-vram", str(args.reserve)]
     w, h = (960, 544) if args.draft else (1344, 768)
+    refs = [s.strip() for s in args.ref.split(",") if s.strip()]
+    rvids = [s.strip() for s in args.ref_video.split(",") if s.strip()]
+    if len(refs) > 9 or len(rvids) > 3:
+        print("at most 9 --ref images and 3 --ref-video")
+        return 2
     params = dict(matrix.PROBE, width=w, height=h, length=args.length, steps=args.steps,
                   cfg=1.0, prompt=prompt, seed=args.seed,
                   cache=None if args.nocache else "easy", cache_threshold=0.4,
                   tiled_decode=args.tiled, chunk_heads=args.chunk,
                   first_frame=args.first_frame or None,
-                  last_frame=args.last_frame or None)
+                  last_frame=args.last_frame or None,
+                  refs=refs or None, ref_videos=rvids or None, ref_size=args.ref_size)
+    # references live in the other 20 GB checkpoint; the fl2va one has no
+    # reference pathway and would silently ignore them
+    if refs or rvids:
+        params["unet"] = matrix.REF2VA
     wf = matrix.build_workflow(**params)
     # a name containing "/" writes into that subfolder under output/
     wf["13"]["inputs"]["filename_prefix"] = args.name if "/" in args.name else f"video/{args.name}"
 
     tok = matrix.tokens(w, h, args.length)
-    print(f"{w}x{h}, {args.length} frames ({args.length/24:.1f}s), {args.steps} steps, "
+    mode = ("r2v" if (refs or rvids) else
+            "i2v" if args.first_frame else "t2v")
+    print(f"[{mode}] {w}x{h}, {args.length} frames ({args.length/24:.1f}s), {args.steps} steps, "
           f"seed {args.seed}, {tok:,} tokens")
+    if refs:
+        print("  refs: " + ", ".join(f"<Picture {i+1}>={f}" for i, f in enumerate(refs))
+              + f"  [{args.ref_size}]")
+    if rvids:
+        print("  ref videos: " + ", ".join(f"<Video {i+1}>={f}" for i, f in enumerate(rvids)))
+    if args.first_frame:
+        print(f"  from frame: {args.first_frame}")
     print(f"prompt: {prompt[:110]}{'...' if len(prompt) > 110 else ''}\n")
 
     proc = start_server(flags)
@@ -175,8 +209,10 @@ def main():
                      for kind in ("images", "video", "gifs", "audio")
                      for f in (out.get(kind) or []) if isinstance(f, dict) and f.get("filename")]
             secs = server_seconds(entry)
-            rec = {"ok": ok, "server_s": secs, "files": files, "width": w, "height": h,
-                   "length": args.length, "steps": args.steps, "seed": args.seed,
+            rec = {"ok": ok, "mode": mode, "server_s": secs, "files": files,
+                   "width": w, "height": h, "length": args.length, "steps": args.steps,
+                   "seed": args.seed, "refs": refs, "ref_videos": rvids,
+                   "first_frame": args.first_frame, "name": args.name,
                    "prompt": prompt, "ts": int(time.time())}
             if not ok:
                 msgs = [str(m) for m in entry.get("status", {}).get("messages", [])]

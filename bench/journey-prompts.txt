@@ -1,43 +1,71 @@
-# UDAIPUR → HIMACHAL — a road journey in 12 shots, ~3 minutes
+# UDAIPUR -> HIMACHAL — a road journey in 12 shots, ~3 minutes
 #
-# Director's note. The whole film is one colour transition: dry ochre and white
-# glare at the start, deep wet green and mist at the end. Every shot is written
-# to sit somewhere on that gradient, so the cut works even if individual shots
-# vary. The car is described identically in every prompt — Nardo grey hatchback,
-# black contrast roof, orange accents — because H3 has no memory between clips
-# and consistency has to come from the words.
+# Director's note. This version uses all three generation modes deliberately,
+# because each solves a problem the others cannot:
 #
-# Structure per prompt follows H3's documented order:
-#   Subject -> Scene -> Action -> Camera -> Timing -> Style -> Audio
-# Each shot names an explicit camera move and a timing beat; 15s is long enough
-# that an unspecified clip drifts or stalls halfway.
+#   t2v   — places we have no photograph of (the Udaipur lake at dawn).
+#   i2v   — a real photograph IS the shot. Frame 0 is the photo itself, so the
+#           car, the cabin and the mountains on screen are the real ones.
+#   r2v   — the real car placed somewhere it has never been. Reference images
+#           carry identity into a NEW scene, which is the only way to get this
+#           specific Altroz onto a Himalayan road we have no photo of.
+#   @chain — the next clip starts on the previous clip's last frame, so a pair
+#           plays as one continuous 30s take. This is how the film gets past
+#           the model's hard 15.1s ceiling.
 #
-# ACT I — DEPARTURE (Rajasthan, dry, gold)
+# Continuity rule: H3 has no memory between clips. Every r2v prompt must ADDRESS
+# its references as <Picture 1>, <Picture 2> — an unnamed reference still costs
+# tokens on every sampling step but steers nothing.
+#
+# The car is a silver-grey Tata Altroz with a black contrast roof and orange
+# interior accents. Described identically wherever it is not carried by a
+# reference image.
 
-A still lake at dawn in Udaipur, white palaces rising from the water. Mist lies on the surface, the far shore is a soft silhouette of domes and hills. The water barely moves; a single boat crosses far off. Camera: slow aerial descent from high above the lake, settling toward the water. Timing: the sun clears the far ridge at the halfway point and light floods across the water. Style: cinematic, warm gold and pale blue, anamorphic, soft haze. Audio: distant temple bells, water lapping, birds waking.
+# ---- SEQ 1: UDAIPUR, DAWN ------------------------------------------- t2v ---
 
-A Nardo grey hatchback car with a black contrast roof and orange accents, parked alone on a dusty ochre track at sunrise in rural Rajasthan. Dry scrub and stacked stone on either side. The car sits still, low sun raking across its flank, long shadow stretching over the dirt. Camera: slow low orbit around the car from front three-quarter to side. Timing: the sun crests and the windscreen flares near the two-thirds mark. Style: cinematic, ochre and warm white, long lens, shallow depth of field, dust in the air. Audio: wind over dry grass, distant dog, a car door closing.
+A still lake at dawn in Udaipur, white palaces rising from the water. Mist lies on the surface and the far shore is a soft silhouette of domes and hills. The water barely moves; a single boat crosses far off. Camera: slow aerial descent from high above the lake, settling toward the water. Timing: the sun clears the far ridge at the halfway point and light floods across the water. Style: cinematic, warm gold and pale blue, anamorphic, soft haze. Audio: distant temple bells, water lapping, birds waking.
 
-The interior of a modern hatchback, black leather with orange stitching and orange air-vent surrounds. A young Indian man in a checked blue shirt sits in the driver's seat. He puts both hands on the flat-bottomed steering wheel, presses the start button, and the digital dashboard wakes with a sweep of light. Camera: close-up on his hands and the wheel, slow rack focus up to his face. Timing: the dashboard lights up at the one-third mark. Style: cinematic, warm interior light against bright window glare, shallow depth of field. Audio: engine turning over, the click of a seatbelt, faint air-conditioning.
+# ---- SEQ 2: THE CAR WAKES ------------------------------ r2v + chain (30s) ---
 
-A Nardo grey hatchback with a black roof pulling away down an empty ochre dirt road in Rajasthan, trailing a plume of pale dust. Flat dry scrub to the horizon, morning sun low behind. Camera: locked wide shot from ground level, the car receding into the distance. Timing: the dust plume catches the light and glows near the end. Style: cinematic, wide, ochre and gold, heat haze, 35mm film grain. Audio: tyres on gravel, engine note rising, wind.
+@ref: j-car-dirt-track.png,j-car-lane.png
+<Picture 1> and <Picture 2> show the same car: a silver-grey Tata Altroz hatchback with a black contrast roof. That exact car stands alone on a dusty ochre track at sunrise in rural Rajasthan, dry scrub and stacked stone walls on either side. The car sits still, the low sun raking across its flank, its long shadow stretching over the dirt. Camera: slow aerial descent from a high three-quarter angle, settling toward the car's flank. Timing: the sun crests the ridge at the two-thirds mark and the windscreen flares. Style: cinematic, ochre and warm white, anamorphic, fine dust hanging in the air, shallow depth of field. Audio: wind over dry grass, a distant dog, a single car door closing.
 
-# ACT II — THE ROAD NORTH (highway, heat, the first green)
+@chain
+The parked car begins to roll forward along the dirt track, gathering speed, a plume of pale dust lifting behind it. Camera: the aerial shot rises and swings to follow the car from behind as it pulls away down the track. Timing: the dust plume catches the low sun and glows at the two-thirds mark. Style: cinematic, ochre and warm white, anamorphic, dust in the air. Audio: tyres crunching on gravel, the engine note rising, wind.
 
-A Nardo grey hatchback with a black roof alone on a long straight highway cutting through dry scrubland, northern Rajasthan at mid-morning. Nothing else on the road. Camera: high aerial tracking shot moving with the car, the road a straight line to the horizon. Timing: the car passes beneath the camera at the midpoint. Style: cinematic, bleached ochre and white sky, wide, heat shimmer on the tarmac. Audio: steady highway hum, wind buffet, faint radio.
+# ---- SEQ 3: INSIDE ------------------------------------- i2v + chain (30s) ---
 
-Driver's point of view through a windscreen, hands visible on a flat-bottomed steering wheel with orange accents on the dashboard. The road unspools ahead, white lane markings sliding past, an overloaded truck passing on the right. Camera: locked interior POV facing forward through the glass, slight handheld float. Timing: the truck passes at the one-third mark. Style: cinematic, high-contrast daylight, glare on the glass, shallow depth of field. Audio: road noise, the truck's horn dopplering past, air rushing.
+@image: j-interior-driver.png
+Inside the moving car, a young Indian man in a blue and white checked shirt sits at the wheel, sunlight falling through the open sunroof onto the black dashboard and its orange air-vent surrounds. He keeps one hand on the wheel, glances at the mirror, then back to the road; green scrub slides past the side window. Camera: locked interior three-quarter on the driver, a slow drift in toward his face. Timing: he glances at the mirror at the one-third mark. Style: cinematic, warm cabin light against bright window glare, shallow depth of field, 35mm grain. Audio: steady engine, road noise, faint air-conditioning, wind at the sunroof.
 
-A roadside dhaba under a corrugated roof on a Rajasthan highway at midday. Plastic chairs, a steel kettle steaming, heat shimmering off the tarmac beyond. A glass of chai sits on a metal table. Camera: slow push in from wide to close on the glass, rack focus to the road behind. Timing: a truck rumbles past in the background at the halfway point. Style: cinematic, harsh midday light, ochre and steel, shallow depth of field. Audio: kettle hissing, distant traffic, cutlery, a radio playing faintly.
+@chain
+The driver settles, both hands returning to the wheel, and looks ahead down the road. A band of sunlight sweeps across the cabin and over his face as the car turns. Camera: the slow drift continues past him toward the windscreen and the road beyond. Timing: the light sweeps across his face at the halfway point. Style: cinematic, warm cabin light, shallow depth of field, 35mm grain. Audio: steady engine, road noise, a turn indicator ticking once.
 
-A Nardo grey hatchback with a black roof on a highway running between flat green farmland, late afternoon in Punjab. Rows of crops stretch to a low horizon, the ochre of the desert entirely gone. Camera: low tracking shot alongside the car, moving with it, fields streaking past behind. Timing: the light turns golden at the two-thirds mark. Style: cinematic, saturated green and warm gold, long lens, shallow depth of field. Audio: steady engine, wind, birds over the fields.
+# ---- SEQ 4: THE ROAD ----------------------------------- i2v + chain (30s) ---
 
-# ACT III — THE CLIMB (foothills, forest, mist)
+@image: j-pov-windscreen.png
+Driver's point of view through the windscreen of the moving car, hands resting on the wheel, orange vents and the navigation screen glowing on the dashboard. The road unspools ahead between green verges, white lane markings sliding past, low hills on the horizon. An overloaded truck passes in the opposite lane. Camera: locked interior POV facing forward through the glass, a slight handheld float. Timing: the truck passes at the one-third mark. Style: cinematic, high-contrast daylight, glare across the glass, shallow depth of field. Audio: road noise, the truck's horn dopplering past, air rushing.
 
-A narrow road beginning to curve upward into low forested hills, first light of morning, the plains falling away behind. Scattered pines appear among scrub, the air noticeably clearer. Camera: aerial shot rising and turning to follow the road as it bends into the hills. Timing: the plains disappear from frame at the midpoint. Style: cinematic, cool green and pale blue replacing warm tones, wide, soft morning haze. Audio: engine working on the gradient, wind, birdsong.
+@chain
+The road continues to unspool ahead and begins to bend; the low hills on the horizon grow taller and closer, turning from hazy blue to deep green as the car approaches them. Camera: the same locked forward POV, following the road through the bend. Timing: the hills fill the upper half of the frame by the two-thirds mark. Style: cinematic, high-contrast daylight softening into cooler green, glare on the glass. Audio: road noise, the engine loading slightly on the incline, wind.
 
-A Nardo grey hatchback with a black roof winding up a narrow mountain road through dense deodar pine forest in Himachal, dappled sunlight falling through the canopy onto the tarmac. Steep green slope above, valley dropping away below. Camera: tracking shot from the outside of the bend, following the car through the curve. Timing: the car passes through a shaft of light at the two-thirds mark. Style: cinematic, deep green and gold dapple, long lens, shallow depth of field. Audio: engine echoing off rock, wind in pines, a stream somewhere below.
+# ---- SEQ 5: THE CLIMB ---------------------------------- r2v + chain (30s) ---
 
-A steep Himalayan slope covered in dense green deodar and pine, mist rolling up from the valley and swallowing the treeline. No road, no people, only forest and moving cloud. Camera: slow aerial drift across the face of the slope, the mist passing between camera and trees. Timing: the mist thickens and hides the ridge near the end. Style: cinematic, saturated deep green against soft grey-white cloud, wide, high humidity in the air. Audio: wind through pines, dripping water, a distant bird call, no traffic.
+@ref: j-car-dirt-track.png,j-car-lane.png,j-car-overlook.png
+<Picture 1>, <Picture 2> and <Picture 3> show the same car from three angles: a silver-grey Tata Altroz hatchback with a black contrast roof. That exact car climbs a narrow mountain road through dense deodar pine forest in Himachal, dappled sunlight falling through the canopy onto wet tarmac, a steep green slope above and the valley dropping away below. Camera: tracking shot from the outside of the bend, following the car through the curve. Timing: the car passes through a shaft of light at the two-thirds mark. Style: cinematic, deep green and gold dapple, long lens, shallow depth of field, damp air. Audio: the engine echoing off rock, wind in the pines, a stream somewhere below.
 
-A Nardo grey hatchback with a black roof parked at a green overlook high in Himachal, both front doors open, mountains layered in blue-green haze receding to the horizon behind. A young Indian man in a checked blue shirt stands beside the car looking out at the valley. Camera: slow aerial pull-back and rise, the car and figure becoming small against the mountains. Timing: he turns to look out at the two-thirds mark as the camera lifts. Style: cinematic, deep green foreground into blue atmospheric haze, wide, late afternoon light. Audio: wind, distant cowbells, a car door closing, birdsong.
+@chain
+The car continues around the bend and the forest opens: the valley falls away on the outside of the curve, ridge behind ridge receding into blue-green haze. Camera: the tracking shot widens and lifts, letting the car become small against the opening valley. Timing: the valley is fully revealed at the halfway point. Style: cinematic, deep green into blue atmospheric haze, wide, damp air. Audio: the engine easing off, wind, distant birds.
+
+# ---- SEQ 6: HIMACHAL ------------------------------------------------ i2v ---
+
+@image: j-misty-pines.png
+A steep Himalayan slope densely covered in green deodar and pine, low cloud moving through the trees. The mist rolls up out of the valley and drifts across the face of the slope, swallowing and then revealing the treeline. No road, no people, only forest and moving cloud. Camera: slow aerial drift across the face of the slope, mist passing between the camera and the trees. Timing: the mist thickens and hides the upper ridge near the end. Style: cinematic, saturated deep green against soft grey-white cloud, wide, high humidity in the air. Audio: wind through pines, dripping water, a distant bird call, no traffic.
+
+@image: j-valley-road.png
+A wide green Himalayan valley seen from high on its side, terraced slopes and scattered houses below, a thin road tracing the far hillside, tall cumulus stacked above the ridges. Cloud shadows move slowly across the valley floor and the light shifts as they pass. Camera: slow aerial push forward and slight rise, opening the valley out. Timing: a large cloud shadow crosses the near slope at the halfway point. Style: cinematic, saturated greens under a bright cloudy sky, wide, deep focus, monsoon light. Audio: wind, distant cowbells, birdsong, faint thunder far off.
+
+# ---- SEQ 7: ARRIVAL ------------------------------------------------- r2v ---
+
+@ref: j-car-overlook.png,j-car-lane.png,j-person.png
+<Picture 1> and <Picture 2> show the same silver-grey Tata Altroz hatchback with a black contrast roof. <Picture 3> shows a young Indian man with short dark hair and a beard. That exact car is parked at a green overlook high in Himachal with the driver's door open, mountains layered in blue-green haze receding to the horizon behind it, and that same man stands beside the car looking out over the valley. Camera: slow aerial pull-back and rise, the car and the figure becoming small against the mountains. Timing: he turns to look out across the valley at the two-thirds mark as the camera lifts. Style: cinematic, deep green foreground into blue atmospheric haze, wide, late afternoon light. Audio: wind, distant cowbells, a car door closing, birdsong.

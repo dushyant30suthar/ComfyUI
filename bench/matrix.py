@@ -68,7 +68,8 @@ def build_workflow(width, height, length, steps, cfg, sampler, scheduler,
                    cache=None, cache_threshold=0.2, cache_start=0.15, cache_end=0.95,
                    compile_backend=None, sage3=False, distorch=None, dualpipe=None,
                    stop_after=None, tiled_decode=0, chunk_heads=0,
-                   first_frame=None, last_frame=None):
+                   first_frame=None, last_frame=None,
+                   refs=None, ref_videos=None, ref_size="match"):
     """API-format graph, structurally identical to workflows/h3/h3-t2v-dualgpu.json.
 
     Device nodes are inserted only when not "default": an identity
@@ -174,15 +175,49 @@ def build_workflow(width, height, length, steps, cfg, sampler, scheduler,
     # optional, and omitting both is pure text-to-video. There is no separate
     # T2V node despite the name. Supplying first_frame animates FROM that image;
     # supplying both interpolates between them.
-    i2v_inputs = {"clip": clip_src, "vae": vvae_src, "prompt": prompt,
-                  "width": width, "height": height, "length": length}
-    if first_frame:
-        g["25"] = {"class_type": "LoadImage", "inputs": {"image": first_frame}}
-        i2v_inputs["first_frame"] = ["25", 0]
-    if last_frame:
-        g["26"] = {"class_type": "LoadImage", "inputs": {"image": last_frame}}
-        i2v_inputs["last_frame"] = ["26", 0]
-    g["6"] = {"class_type": "MiniMaxH3ImageToVideo", "inputs": i2v_inputs}
+    # Reference-to-video is a DIFFERENT node on a DIFFERENT checkpoint (ref2va,
+    # selected by the caller via unet=REF2VA). It does not animate a given frame
+    # — it carries the identity of the references into a NEW scene, which is the
+    # only way to put a specific real subject somewhere it has never been.
+    #
+    # Two things the schema makes easy to get wrong:
+    #   * `ref_images` is an Autogrow, so execute() receives a DICT keyed by the
+    #     socket name ("ref_image_0"), not a list and not a flat kwarg. Passing
+    #     `ref_image_0` at the top level validates fine and then dies at run
+    #     time as an unexpected kwarg — which is why the shipped r2v workflow
+    #     had never generated a frame.
+    #   * the prompt must ADDRESS the references as <Picture 1>, <Picture 2>...
+    #     (1-based, in the order given). References the prompt never names are
+    #     still encoded and still cost tokens every step, but steer nothing.
+    if refs or ref_videos:
+        r_inputs = {"clip": clip_src, "vae": vvae_src, "audio_vae": avae_src,
+                    "prompt": prompt, "width": width, "height": height,
+                    "length": length, "ref_image_size": ref_size}
+        imgs = {}
+        for i, fn in enumerate(refs or []):
+            g[f"3{i}"] = {"class_type": "LoadImage", "inputs": {"image": fn}}
+            imgs[f"ref_image_{i}"] = [f"3{i}", 0]
+        if imgs:
+            r_inputs["ref_images"] = imgs
+        vids = {}
+        for i, fn in enumerate(ref_videos or []):
+            # VHS_LoadVideo is not present; the stock path is LoadVideo -> frames
+            g[f"4{i}"] = {"class_type": "LoadVideo", "inputs": {"file": fn}}
+            g[f"5{i}"] = {"class_type": "GetVideoComponents", "inputs": {"video": [f"4{i}", 0]}}
+            vids[f"ref_video_{i}"] = [f"5{i}", 0]
+        if vids:
+            r_inputs["ref_videos"] = vids
+        g["6"] = {"class_type": "MiniMaxH3ReferenceToVideo", "inputs": r_inputs}
+    else:
+        i2v_inputs = {"clip": clip_src, "vae": vvae_src, "prompt": prompt,
+                      "width": width, "height": height, "length": length}
+        if first_frame:
+            g["25"] = {"class_type": "LoadImage", "inputs": {"image": first_frame}}
+            i2v_inputs["first_frame"] = ["25", 0]
+        if last_frame:
+            g["26"] = {"class_type": "LoadImage", "inputs": {"image": last_frame}}
+            i2v_inputs["last_frame"] = ["26", 0]
+        g["6"] = {"class_type": "MiniMaxH3ImageToVideo", "inputs": i2v_inputs}
     g["7"] = {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["6", 0]}}
     g["8"] = {"class_type": "KSampler",
               "inputs": {"model": sampled_model, "seed": seed, "steps": steps, "cfg": cfg,

@@ -122,7 +122,10 @@ grep TRIPPED bench/h3-logs/*.log                    # watchdog kills
 | `custom_nodes/sage_chunked/` | **The one that changed what this box can do.** Head-grouped attention; without it native tops out at 13 s. |
 | `custom_nodes/h3_dualpipe/` | Two-GPU pipeline split. Works, but ~11% slower than one GPU — not for production. |
 | `custom_nodes/sage3_select/` | SageAttention 3 selector. Measured and **not adoptable** — OOMs at 15 s, swaps the box with the cache. Kept for the record. |
-| `bench/gen.py` | Prompt → clip. All the flags above, documented in `--help`. |
+| `bench/gen.py` | Prompt → clip. All three modes (t2v / i2v / r2v) and every flag above, documented in `--help`. |
+| `bench/produce.sh` | Batch renderer. Directives `@image` / `@ref` / `@refsize` / `@chain`; one server per clip; resumable; re-cuts the film after every shot. |
+| `bench/lastframe.sh` | Pulls a clip's second-to-last frame into `input/` — the mechanism for joining clips past 15.1 s. |
+| `bench/assemble.sh` | ffmpeg concat of the rendered shots; tolerates missing ones. |
 | `bench/memguard.sh` | The watchdog. Calibrated on eight recorded events. |
 | `bench/costmodel.py` | Predicts a run's time before you spend it. Within 2.6 s on every single-GPU row. |
 | `bench/probe-length.py` | Finds the longest clip that keeps the fast attention path, at any canvas. |
@@ -181,7 +184,60 @@ In `~/Projects/opencode-llama.cpp/docs/`:
 
 ---
 
-## 9. Batch production (overnight films)
+## 9. The three generation modes
+
+All three run through `bench/gen.py`, so every memory flag in §2 applies
+unchanged to all of them.
+
+| mode | flag | what it does | checkpoint |
+|---|---|---|---|
+| text-to-video | *(none)* | prompt only | fl2va |
+| image-to-video | `--first-frame f.png` | animates **from** that exact image | fl2va |
+| | `--last-frame f.png` | animates **to** it; with both, interpolates | fl2va |
+| reference-to-video | `--ref a.png,b.png` | carries the **identity** of those subjects into a **new** scene | ref2va |
+| | `--ref-video clip.mp4` | carries motion and look forward from a rendered clip | ref2va |
+
+The distinction that matters: `--first-frame` reproduces the image and moves it,
+so the shot is locked to that photograph's composition and location. `--ref`
+does not reproduce anything — it puts the *subject* somewhere it has never
+been. To get a specific real car onto a road you have no photo of, you need
+`--ref`.
+
+**Reference prompts must address their references.** The node presents them as
+`<Picture 1>`, `<Picture 2>`, … (1-based, in the order given; videos are
+`<Video 1>`, audio `<Audio 1>`). A reference the prompt never names is still
+encoded and still costs tokens on every sampling step, but steers nothing.
+Limits: 9 images, 3 videos, 3 audio.
+
+`--ref-size` is `match` (scale references to the generation's pixel area) or
+`max` (2048px short edge — better identity, several times slower, because
+reference tokens ride through every step).
+
+**Measured 2026-08-05:** r2v with two references at `match`, 1344×768 × 362
+frames, `--chunk 4 --tiled 32 --lowmem`, ran **167 s/step** against ~169 s/step
+for plain t2v at the same shape. Two references at `match` size are effectively
+free. `max` has not been measured at 362 frames and should be assumed to be the
+thing that breaks the memory budget.
+
+### Joining clips past the 15.1 s ceiling
+
+```bash
+bench/lastframe.sh output/journey/shot-002_00001.mp4 chain-003
+.venv/bin/python bench/gen.py --first-frame chain-003.png --prompt "..." ...
+```
+
+`gen.py` reproduces its seed frame at frame 0 to within 2.7/255, so the cut is
+invisible and the two clips play as one 30 s take. `lastframe.sh` deliberately
+takes the *second*-to-last frame: the final frame of a VAE-decoded clip is the
+most likely to carry temporal-tile edge artifacts, and any artifact there would
+be inherited as the seed of the entire next clip.
+
+Chain two or three clips, not ten — each generation inherits the previous one's
+drift, and it compounds.
+
+---
+
+## 10. Batch production (overnight films)
 
 ```bash
 bench/produce.sh <prompts-file> <profile> <output-subfolder>
@@ -189,7 +245,22 @@ bench/assemble.sh <output-subfolder>          # concatenates into one film
 ```
 
 **Prompt file format:** prompts separated by BLANK LINES; a prompt may span
-several lines; `#` starts a comment. Write each in H3's documented order —
+several lines; `#` starts a comment.
+
+A prompt may open with directive lines, stripped before it is sent:
+
+| directive | effect |
+|---|---|
+| `@image: f.png` | image-to-video from `input/f.png` |
+| `@ref: a.png,b.png` | reference-to-video; address them as `<Picture 1>`, `<Picture 2>` |
+| `@refsize: max` | 2048px references — better identity, much slower |
+| `@chain` | image-to-video seeded with the **previous shot's last frame** |
+
+`@chain` resolves at run time against whatever the previous shot actually
+produced. If that shot failed, the clip renders standalone as text-to-video
+rather than aborting — a self-contained clip beats a hole in the film.
+
+Write each prompt in H3's documented order —
 Subject → Scene → Action → Camera → Timing → Style → Audio — and name an
 explicit camera move and a timing beat. 15 s is long enough that an unspecified
 shot drifts or stalls halfway.

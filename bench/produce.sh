@@ -59,15 +59,54 @@ for f in "$TMP"/*.txt; do
   if ls output/${name}_*.mp4 >/dev/null 2>&1; then
     echo "[$i/$COUNT] $name — already rendered, skipping" | tee -a "$OUT"; ok=$((ok+1)); continue
   fi
-  echo "[$i/$COUNT] $(date +%H:%M:%S) $name — $(head -c 70 "$f")..." | tee -a "$OUT"
+  # A prompt may open with directive lines, which are stripped before it is sent:
+  #   @image: f.png        image-to-video, animate FROM input/f.png
+  #   @ref: a.png,b.png    reference-to-video, carry those subjects into a NEW
+  #                        scene. Address them in the prompt as <Picture 1>, ...
+  #   @refsize: max        2048px references — better identity, much slower
+  #   @chain               image-to-video seeded with the LAST FRAME of the
+  #                        previous shot, so the two clips play as one take.
+  #                        This is how a sequence runs past the model's 15.1s
+  #                        ceiling; the seam is invisible because gen.py
+  #                        reproduces its seed frame to within 2.7/255.
+  IMG=""; REF=""; REFSIZE="match"; CHAIN=""
+  while head -1 "$f" | grep -q '^@'; do
+    D=$(head -1 "$f")
+    case "$D" in
+      @image:*)   IMG=$(echo "$D"   | sed 's/^@image:[[:space:]]*//') ;;
+      @ref:*)     REF=$(echo "$D"   | sed 's/^@ref:[[:space:]]*//') ;;
+      @refsize:*) REFSIZE=$(echo "$D" | sed 's/^@refsize:[[:space:]]*//') ;;
+      @chain)     CHAIN=1 ;;
+      *) echo "      unknown directive: $D — ignoring" | tee -a "$OUT" ;;
+    esac
+    tail -n +2 "$f" > "$f.p" && mv "$f.p" "$f"
+  done
+  # Resolve @chain against whatever the previous shot actually produced. If it
+  # is missing (that shot failed), fall back to text-to-video rather than
+  # aborting: a standalone clip beats a hole in the film.
+  if [[ -n "$CHAIN" ]]; then
+    PREV=$(ls -t output/${PREFIX}/shot-$(printf '%03d' $((i-1)))_*.mp4 2>/dev/null | head -1)
+    if [[ -n "$PREV" ]] && bench/lastframe.sh "$PREV" "chain-$(printf '%03d' "$i")" >>"$OUT" 2>&1; then
+      IMG="chain-$(printf '%03d' "$i").png"
+    else
+      echo "      @chain: shot $((i-1)) unavailable — rendering standalone" | tee -a "$OUT"
+    fi
+  fi
+  MODE="t2v"; [[ -n "$IMG" ]] && MODE="i2v from $IMG"; [[ -n "$REF" ]] && MODE="r2v via $REF"
+  echo "[$i/$COUNT] $(date +%H:%M:%S) $name  [$MODE] — $(head -c 55 "$f")..." | tee -a "$OUT"
   : > bench/gen-server.log
   timeout 7200 bench/memguard.sh -- .venv/bin/python bench/gen.py \
-    --prompt-file "$f" --name "$name" --seed $((42 + i)) "${ARGS[@]}" \
+    --prompt-file "$f" --name "$name" --seed $((42 + i)) \
+    ${IMG:+--first-frame "$IMG"} ${REF:+--ref "$REF" --ref-size "$REFSIZE"} "${ARGS[@]}" \
     >> "$OUT" 2>&1
   rc=$?
   fb=$(grep -c "using pytorch attention instead" bench/gen-server.log 2>/dev/null || echo 0)
   if [[ $rc -eq 0 ]] && ls output/${name}_*.mp4 >/dev/null 2>&1; then
     ok=$((ok+1)); echo "      OK$([[ $fb -gt 0 ]] && echo "  WARNING: $fb attention fallbacks — ran the slow path")" | tee -a "$OUT"
+    # Re-cut the film after every shot. Costs a couple of seconds (stream copy,
+    # no re-encode) and means there is always a current, watchable film on disk
+    # rather than only after the last shot lands hours later.
+    [[ $ok -ge 2 ]] && bench/assemble.sh "$PREFIX" >>"$OUT" 2>&1
   else
     fail=$((fail+1)); echo "      FAILED (rc=$rc) — continuing" | tee -a "$OUT"
   fi
