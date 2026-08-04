@@ -26,11 +26,51 @@
       "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
     }
   },
+  "15": {
+    "class_type": "SelectModelDevice",
+    "inputs": {
+      "model": [
+        "1",
+        0
+      ],
+      "device": "gpu:0"
+    }
+  },
+  "16": {
+    "class_type": "SelectCLIPDevice",
+    "inputs": {
+      "clip": [
+        "3",
+        0
+      ],
+      "device": "gpu:1"
+    }
+  },
+  "17": {
+    "class_type": "SelectVAEDevice",
+    "inputs": {
+      "vae": [
+        "4",
+        0
+      ],
+      "device": "gpu:0"
+    }
+  },
+  "18": {
+    "class_type": "SelectVAEDevice",
+    "inputs": {
+      "vae": [
+        "5",
+        0
+      ],
+      "device": "gpu:0"
+    }
+  },
   "2": {
     "class_type": "MiniMaxH3SigmaShift",
     "inputs": {
       "model": [
-        "1",
+        "15",
         0
       ],
       "shift_video": 12.0,
@@ -41,11 +81,11 @@
     "class_type": "MiniMaxH3ImageToVideo",
     "inputs": {
       "clip": [
-        "3",
+        "16",
         0
       ],
       "vae": [
-        "4",
+        "17",
         0
       ],
       "prompt": "A slow dolly shot through a rain-soaked Tokyo alley at night, neon signs reflecting in puddles, steam rising from a ramen stall.",
@@ -107,7 +147,7 @@
         0
       ],
       "vae": [
-        "4",
+        "17",
         0
       ]
     }
@@ -120,7 +160,7 @@
         1
       ],
       "audio_vae": [
-        "5",
+        "18",
         0
       ]
     }

@@ -78,9 +78,21 @@ def _install_prefetch_guard():
     orig = comfy.model_prefetch.make_prefetch_queue
 
     def make_prefetch_queue_split_aware(queue, device, transformer_options):
-        if transformer_options.get("h3_dualpipe_split"):
-            return None
-        return orig(queue, device, transformer_options)
+        split = transformer_options.get("h3_dualpipe_split")
+        if not split:
+            return orig(queue, device, transformer_options)
+        # Blank out ONLY the blocks that live on device_b. prefetch_queue_pop
+        # already skips None entries, so cuda:0's half keeps its overlapped
+        # weight transfers while the cuda:1 half — whose vbars this node rebound
+        # into another arena — is never staged with the model-level device.
+        #
+        # The first version of this guard returned None for the whole model,
+        # which disabled prefetch for cuda:0's blocks too. That is a plausible
+        # cause of the split's flat ~11% penalty: it does not vary with the cut,
+        # and neither does losing prefetch.
+        idx = int(split) if not isinstance(split, bool) else 0
+        scoped = [b if i < idx else None for i, b in enumerate(queue)]
+        return orig(scoped, device, transformer_options)
 
     comfy.model_prefetch.make_prefetch_queue = make_prefetch_queue_split_aware
     _PREFETCH_GUARD["installed"] = True
@@ -330,7 +342,7 @@ class H3PipelineSplit:
         # Marker consumed by the prefetch guard: vbar prefetch stages transfers
         # with the model-level device and mislabels the cuda:1 half. See
         # _install_prefetch_guard.
-        to["h3_dualpipe_split"] = True
+        to["h3_dualpipe_split"] = int(split_index)
         pr = to.setdefault("patches_replace", {})
         dit = pr.setdefault("dit", {})
         for i in range(n):

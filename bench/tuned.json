@@ -1,10 +1,14 @@
 {
-  "generated": "2026-08-04 14:07",
+  "generated": "2026-08-04 23:18",
   "launch_flags": [
     "--use-sage-attention",
     "--fast"
   ],
-  "workflow": {},
-  "source": "analyse.py over 52 runs",
-  "note": "F/J/E/G are NOT auto-selected: their rows change how much work is done or how the output looks, so 'fastest' is not 'best'. See FINDINGS.md."
+  "workflow": {
+    "model_device": "gpu:0",
+    "clip_device": "gpu:1",
+    "vae_device": "gpu:0"
+  },
+  "source": "analyse.py over 74 runs",
+  "note": "E/F/G/J/K/L are NOT auto-selected: their rows change how much work is done or how the output looks, so 'fastest' is not 'best'. See FINDINGS.md."
 }
