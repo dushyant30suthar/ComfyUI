@@ -17,34 +17,52 @@ not re-litigated)
 
 ---
 
-## 1. 🔴 Scheduler sweep — the cheapest untested quality lever
+## ~~1.~~ ⚫ Scheduler sweep — DONE 2026-08-05: `simple` confirmed, 7 eliminated
 
-**Cost to test:** ~1 h (6 arms × ~6 min at 124 frames) · **Payoff:** unknown, possibly free quality
+**Cost:** 9 arms × 353 s ≈ 55 min · **Result:** the default was right
 
-We have used `scheduler="simple"` for every single render ever done here, for the
-same reason we used `euler`: it was in `matrix.PROBE` and nobody questioned it.
-The sampler turned out to be the single biggest quality lever on the box and it
-was free. **`simple` is exactly the same class of unexamined default.**
+All nine schedulers, 124 f at 1344×768, seed 777, res_multistep 10 steps, no
+cache — identical to A/B arm B, so `simple` doubled as the control.
 
-Available and untried: `sgm_uniform`, `karras`, `exponential`, `ddim_uniform`,
-`beta`, `normal`, `linear_quadratic`, `kl_optimal`.
+**Scheduler does not affect cost at all**: every arm landed at 352–353 s. It only
+moves where the sigma steps fall, so this was purely a quality question.
 
-MEASURED: the shipped ComfyUI r2v template uses `BasicScheduler: simple`, so
-`simple` is at least the upstream choice — this is weaker evidence than it looks,
-since the template also just picks defaults.
+| scheduler | result |
+|---|---|
+| **simple** | ✅ correct — the control |
+| **sgm_uniform** | ✅ correct, indistinguishable from simple |
+| beta | ❌ hallucinated decorative TEXT across frame + black spike artifacts |
+| normal | ❌ hallucinated text |
+| linear_quadratic | ❌ colour and geometry breakdown, buildings as flat blocks |
+| ddim_uniform | ❌ heavy distortion |
+| kl_optimal | ❌ pure noise |
+| karras | ❌ pure noise |
+| exponential | ❌ pure noise |
 
-```bash
-for s in simple karras beta kl_optimal linear_quadratic sgm_uniform; do
-  .venv/bin/python bench/gen.py --prompt-file bench/journey/ab-prompt.txt \
-    --name "sched/$s" --seed 777 --length 124 --sampler res_multistep \
-    --steps 10 --nocache --scheduler "$s"
-done
-```
+The prediction recorded before the run was half right: karras and exponential
+failed as expected (variance-preserving schedules against a flow-matching model),
+but `kl_optimal` was predicted to cluster with the good ones and instead produced
+noise.
 
-**Do this one first.** It is the same shape of oversight as the sampler, the test
-is cheap, and if it pays it pays on every render forever.
+**The methodological finding is the more valuable one.** A Laplacian-variance
+sharpness proxy ranked the arms almost exactly BACKWARDS:
 
----
+| scheduler | "detail" score | actual |
+|---|---:|---|
+| beta | 773 | hallucinated text |
+| linear_quadratic | 296 | geometry breakdown |
+| normal | 248 | hallucinated text |
+| sgm_uniform | 45 | correct |
+| simple | 44 | correct |
+
+Hallucinated text and spike artifacts ARE high-frequency content. The metric
+cannot distinguish detail from garbage, and on this sweep the correlation was
+inverted — the worst outputs scored 17× the best. This is the second time a
+summary statistic has been wrong here (frame std-dev could not tell "atmospheric
+mist" from "the subject has disappeared" on shot 10). **Look at the frames.**
+
+Unlike `euler`, `simple` survives scrutiny — but it is now measured rather than
+inherited, and seven alternatives are closed.
 
 ## 2. 🔴 `--ref-video` — plumbing built, never once executed
 
