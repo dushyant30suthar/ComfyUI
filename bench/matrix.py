@@ -193,20 +193,29 @@ def build_workflow(width, height, length, steps, cfg, sampler, scheduler,
         r_inputs = {"clip": clip_src, "vae": vvae_src, "audio_vae": avae_src,
                     "prompt": prompt, "width": width, "height": height,
                     "length": length, "ref_image_size": ref_size}
-        imgs = {}
+        # Autogrow inputs use DOT-PREFIXED keys: "ref_images.ref_image_0".
+        #
+        # This took three attempts and two of them fail SILENTLY or confusingly:
+        #   {"ref_images": {"ref_image_0": [..]}}  -> validates, runs, and every
+        #        reference is DISCARDED with no error. This is the one that made
+        #        the whole journey film generate from prompt text alone.
+        #   {"ref_image_0": [..]}                  -> TypeError: execute() got an
+        #        unexpected keyword argument 'ref_image_0'
+        #   {"ref_images.ref_image_0": [..]}       -> correct
+        #
+        # Why: comfy_api/latest/_io.py:_expand_schema_for_dynamic checks
+        # `finalize_prefix(curr_prefix, name) in live_inputs`, and curr_prefix for
+        # this input is ["ref_images"], so the key it looks for is the dotted
+        # form. Finding nothing it sets DynamicPathsDefaultValue.EMPTY_DICT --
+        # hence the silence. execution.py:288 then calls build_nested_inputs(),
+        # which folds the dotted keys back into the dict execute() receives.
         for i, fn in enumerate(refs or []):
             g[f"3{i}"] = {"class_type": "LoadImage", "inputs": {"image": fn}}
-            imgs[f"ref_image_{i}"] = [f"3{i}", 0]
-        if imgs:
-            r_inputs["ref_images"] = imgs
-        vids = {}
+            r_inputs[f"ref_images.ref_image_{i}"] = [f"3{i}", 0]
         for i, fn in enumerate(ref_videos or []):
-            # VHS_LoadVideo is not present; the stock path is LoadVideo -> frames
             g[f"4{i}"] = {"class_type": "LoadVideo", "inputs": {"file": fn}}
             g[f"5{i}"] = {"class_type": "GetVideoComponents", "inputs": {"video": [f"4{i}", 0]}}
-            vids[f"ref_video_{i}"] = [f"5{i}", 0]
-        if vids:
-            r_inputs["ref_videos"] = vids
+            r_inputs[f"ref_videos.ref_video_{i}"] = [f"5{i}", 0]
         g["6"] = {"class_type": "MiniMaxH3ReferenceToVideo", "inputs": r_inputs}
     else:
         i2v_inputs = {"clip": clip_src, "vae": vvae_src, "prompt": prompt,
