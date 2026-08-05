@@ -48,31 +48,57 @@ ls models/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors
 
 ---
 
-## 2. Prepare references — the step that decides everything
+## 2. Prepare references — MEASURED, and it contradicts intuition
 
-**Crop to the SUBJECT. Keep the resolution high. Do NOT crop to 1344×768.**
+**Use whole photographs. Do NOT crop to the subject. Use `--ref-size match`.**
 
-This is the exact opposite of i2v seed preparation, and getting it backwards is a
-mistake already made here: canvas-sized references make `--ref-size max` a no-op,
-because both sizing modes then compute a scale of 1.0.
+That is the opposite of what seems sensible, and the opposite of what an earlier
+draft of this document said. Measured 2026-08-05, 124 f native, seed 777,
+res_multistep 10, two references of the same car, identical prompt:
 
-Why cropping matters — the reference is scaled before encoding, so a wide shot
-spends its token budget on sky and tarmac instead of on your subject:
+| arm | reference | sizing | cost | result |
+|---|---|---|---:|---|
+| **A** | whole photo | `match` | **414 s** | ✅ **best value** — plate legible, roof contrast, good proportions |
+| B | whole photo | `max` | 967 s | good, but 2.3× the cost for a marginal gain |
+| C | cropped to car | `match` | 413 s | ❌ **worst** — plate blurred illegible, contrast lost |
+| D | cropped to car | `max` | 521 s | good; recovers what C lost |
 
-| reference | `match` gives | `max` gives |
-|---|---|---|
-| full 2252×4000 photo | 768×1344 (car is ~⅓ of it) | 2048×3648 |
-| cropped to the car | car fills the frame | car fills the frame, 2048px |
+Two things fall out of this:
+
+**Cropping then using `match` throws detail away twice.** A crop is already
+smaller, and `match` scales it again — 3,952 tokens against the whole photo's
+4,032, with the extra loss of everything outside the crop. If you do crop, you
+must pay for `max` to get back to parity, and then you have spent 521 s to match
+what 414 s gave you.
+
+**Token count is not the whole story.** A gets 4,032 tokens and produces a
+legible number plate; C gets 3,952 and produces a smudge. Near-identical budgets,
+very different results. The whole-scene reference is doing something the
+cut-out is not.
+
+*SPECULATIVE, not established:* the full photo shows the car sitting on ground,
+with a horizon, a shadow and real-world scale, and H3 reads references through a
+vision-language encoder that likely handles a natural photograph better than a
+floating cut-out. A moderate crop — subject large but ground and horizon kept —
+has NOT been tested and would distinguish this from sampling noise.
+
+**Caveat: n=1 per arm.** Changing the reference changes the whole sampling
+trajectory, so some of the A-vs-C gap could be luck. The gap was visible enough
+to act on; it is not a law.
+
+Practical preparation, then, is almost nothing:
 
 ```python
 from PIL import Image, ImageOps
-im = ImageOps.exif_transpose(Image.open("photo.jpg"))    # fix rotation
-im.crop((left, top, right, bottom)).convert("RGB").save("input/car-ref.png")
+ImageOps.exif_transpose(Image.open("photo.jpg")).convert("RGB").save("input/car-ref.png")
 ```
 
-**Give 2–3 angles.** Up to 9 images and 3 videos are accepted. Angles that show
-the identity-bearing detail — badge, plate, lights, wheels — beat more images of
-the same view.
+Fix EXIF rotation, save as PNG, done. **Do not resize. Do not crop to canvas** —
+canvas-sized references make `match` and `max` compute the same scale, which
+silently turns `--ref-size` into a no-op.
+
+**Give 2–3 angles.** Up to 9 images and 3 videos are accepted. Different angles
+that show identity-bearing detail beat more shots of the same view.
 
 ---
 
@@ -175,11 +201,13 @@ which requires a detectable face and crashes without one.
 |---|---:|---|
 | no refs | 354 s | baseline |
 | 2 refs, `match` | 414 s | **+17%** |
-| 2 refs, `max` | *measuring* | 2048px short edge; substantially slower — reference tokens ride through every sampling step |
+| 2 refs, `max` | 967 s | **2.3×** — 2048px short edge; reference tokens ride through every sampling step |
 
-`--ref-size max` was long assumed free. That was measured while references were
-being discarded. **`match` is the default and the safe choice**; reach for `max`
-only when a specific detail refuses to transfer, and expect to pay for it.
+`--ref-size max` was long recorded as free. That was measured while references
+were being discarded entirely. Measured properly it costs **2.3×** and, on whole
+photographs, buys only a marginal gain. **`match` is the default and the right
+choice**; `max` is only worth it if you are cropping (see §2) or a specific
+detail refuses to transfer.
 
 At 362 frames native we run at 15.6 GB of 16 GB with no headroom — **assume `max`
 will OOM at full length until shown otherwise.** Test at 124 frames first.
