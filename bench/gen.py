@@ -115,7 +115,15 @@ def main():
                          "per step is the square of euler's: ~20 steps accumulate what euler "
                          "accumulates in 40-50, at the same one DiT call per step. euler here "
                          "is a benchmark-harness inheritance, not a considered choice")
-    ap.add_argument("--scheduler", default="simple")
+    ap.add_argument("--scheduler", default="simple",
+                    help="measured 2026-08-05: only `simple` and `sgm_uniform` produce correct "
+                         "output on H3. karras/exponential/kl_optimal give pure noise, "
+                         "beta/normal hallucinate text into the frame, linear_quadratic breaks "
+                         "geometry. Scheduler costs nothing either way, so there is no reason "
+                         "to move off simple")
+    ap.add_argument("--cfg", type=float, default=1.0,
+                    help="H3 is guidance-distilled, so cfg>1 is expected to roughly double cost "
+                         "for no benefit. Exposed so that can be measured rather than assumed")
     ap.add_argument("--chunk", type=int, default=0, metavar="GROUPS",
                     help="run SageAttention over GROUPS head groups (custom_nodes/sage_chunked). "
                          "Exact — heads are independent. Cuts sage's int8 scratch to ~1/GROUPS, "
@@ -167,7 +175,7 @@ def main():
         return 2
     params = dict(matrix.PROBE, width=w, height=h, length=args.length, steps=args.steps,
                   sampler=args.sampler, scheduler=args.scheduler,
-                  cfg=1.0, prompt=prompt, seed=args.seed,
+                  cfg=args.cfg, prompt=prompt, seed=args.seed,
                   cache=None if args.nocache else "easy", cache_threshold=0.4,
                   tiled_decode=args.tiled, chunk_heads=args.chunk,
                   first_frame=args.first_frame or None,
@@ -217,7 +225,8 @@ def main():
                      for kind in ("images", "video", "gifs", "audio")
                      for f in (out.get(kind) or []) if isinstance(f, dict) and f.get("filename")]
             secs = server_seconds(entry)
-            rec = {"ok": ok, "mode": mode, "sampler": args.sampler, "server_s": secs, "files": files,
+            rec = {"ok": ok, "mode": mode, "sampler": args.sampler,
+                   "scheduler": args.scheduler, "cfg": args.cfg, "server_s": secs, "files": files,
                    "width": w, "height": h, "length": args.length, "steps": args.steps,
                    "seed": args.seed, "refs": refs, "ref_videos": rvids,
                    "first_frame": args.first_frame, "name": args.name,

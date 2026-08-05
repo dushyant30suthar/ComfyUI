@@ -64,25 +64,37 @@ mist" from "the subject has disappeared" on shot 10). **Look at the frames.**
 Unlike `euler`, `simple` survives scrutiny — but it is now measured rather than
 inherited, and seven alternatives are closed.
 
-## 2. 🔴 `--ref-video` — plumbing built, never once executed
+## ~~2.~~ 🟡 `--ref-video` — DONE 2026-08-05: works, free, and better than expected
 
-**Cost to test:** ~30 min · **Payoff:** potentially the best continuity tool we have
+**Cost:** 352 s · **Result:** executes, carries identity, costs nothing extra
 
-`gen.py --ref-video` was implemented (`LoadVideo` → `GetVideoComponents` →
-`ref_videos` dict) and **has never been run**. The node accepts up to 3 reference
-videos of 2–15 s.
+First execution ever. 124 f at native, seed 777, res_multistep 10, one 125-frame
+reference clip cut from journey shot 002.
 
-Why it matters: our clip chaining seeds the next shot from a **single frame**, and
-MEASURED that costs 8.6/255 with a visible reframe. A reference *video* gives the
-model motion and look across many frames instead of one. GUESSED: continuity
-should be substantially better than single-frame chaining.
+MEASURED:
+- The path runs. `LoadVideo` -> `GetVideoComponents` -> `ref_videos` dict is
+  correctly wired; the `<Video 1>` prompt tag works as documented.
+- **352 s — identical to a render with no references at all.** A 125-frame video
+  reference is as free as image references at `match` sizing.
+- Vehicle identity carried convincingly into a scene that exists in no
+  photograph: body colour, black contrast roof, tail-light signature, C-pillar
+  treatment and wheel pattern all held for the full clip.
 
-Note the same trap as `--ref` images: the prompt must address it as `<Video 1>`.
+STILL UNMEASURED, and it is the thing this lever was actually listed for:
+**whether a video reference beats single-frame `@chain` for continuity between
+consecutive shots.** This test measured identity transfer into a NEW scene, not
+seam quality. The comparison to run is a chained pair versus the same pair with
+the previous clip passed as `--ref-video`, scored the way the 8.6/255 seam was.
 
-**Untested code is not working code** — that is the exact lesson of the r2v
-workflow, which validated for two days and could never have run.
+Two caveats on the result above: the shot frames the car large, which is already
+known to be the condition for reference identity to read at all; and the
+reference clip was cut from a shot that was itself made from image references of
+the same car, so it is somewhat circular.
 
----
+**The unplanned finding is the valuable one:** a *rendered clip* works as an
+identity reference. The model sees the subject in motion from several angles
+rather than from stills, at no cost. For a film where one car appears in ten
+shots, that is a stronger continuity tool than re-describing it in every prompt.
 
 ## 3. 🔴 `--ref-size max` — the fix for identity at distance
 
