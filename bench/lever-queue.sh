@@ -60,3 +60,14 @@ run cfg-3.0 --prompt-file bench/journey/ab-prompt.txt --cfg 3.0
 
 echo "=== $(date +%H:%M:%S)  queue done ==="
 ls -lh output/levers/*.mp4 2>/dev/null | awk '{print "  "$5, $9}'
+
+# --- corrected ref-size test -------------------------------------------------
+# The first attempt was invalid: the reference PNGs had been pre-cropped to the
+# 1344x768 canvas, at which size `match` and `max` both compute scale 1.000 and
+# the two runs came out BIT-IDENTICAL (pixel diff 0.000). Full-resolution
+# references are the only way the modes differ -- on a 4000x2252 photo, match
+# scales to 0.339 and max to 0.909.
+FREFS=jf-car-dirt-track.png,jf-car-lane.png
+run refsize2-match --prompt-file bench/journey/refsize-test.txt --ref "$FREFS" --ref-size match
+run refsize2-max   --prompt-file bench/journey/refsize-test.txt --ref "$FREFS" --ref-size max
+echo "=== $(date +%H:%M:%S)  corrected refsize done ==="
