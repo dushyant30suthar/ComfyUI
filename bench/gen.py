@@ -124,6 +124,10 @@ def main():
     ap.add_argument("--cfg", type=float, default=1.0,
                     help="H3 is guidance-distilled, so cfg>1 is expected to roughly double cost "
                          "for no benefit. Exposed so that can be measured rather than assumed")
+    ap.add_argument("--solattn", type=float, default=0, metavar="TAU",
+                    help="use Sol-Attn sparse attention at this tau instead of SageAttention. "
+                         "MUTUALLY EXCLUSIVE with --chunk: both claim the same attention "
+                         "override slot. Approximate, so quality-check it. 0.8-1.5 suggested")
     ap.add_argument("--chunk", type=int, default=0, metavar="GROUPS",
                     help="run SageAttention over GROUPS head groups (custom_nodes/sage_chunked). "
                          "Exact — heads are independent. Cuts sage's int8 scratch to ~1/GROUPS, "
@@ -177,7 +181,9 @@ def main():
                   sampler=args.sampler, scheduler=args.scheduler,
                   cfg=args.cfg, prompt=prompt, seed=args.seed,
                   cache=None if args.nocache else "easy", cache_threshold=0.4,
-                  tiled_decode=args.tiled, chunk_heads=args.chunk,
+                  tiled_decode=args.tiled,
+                  chunk_heads=0 if args.solattn else args.chunk,
+                  solattn={"tau": args.solattn} if args.solattn else None,
                   first_frame=args.first_frame or None,
                   last_frame=args.last_frame or None,
                   refs=refs or None, ref_videos=rvids or None, ref_size=args.ref_size)

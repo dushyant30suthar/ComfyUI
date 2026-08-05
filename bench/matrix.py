@@ -69,7 +69,7 @@ def build_workflow(width, height, length, steps, cfg, sampler, scheduler,
                    compile_backend=None, sage3=False, distorch=None, dualpipe=None,
                    stop_after=None, tiled_decode=0, chunk_heads=0,
                    first_frame=None, last_frame=None,
-                   refs=None, ref_videos=None, ref_size="match"):
+                   refs=None, ref_videos=None, ref_size="match", solattn=None):
     """API-format graph, structurally identical to workflows/h3/h3-t2v-dualgpu.json.
 
     Device nodes are inserted only when not "default": an identity
@@ -150,6 +150,25 @@ def build_workflow(width, height, length, steps, cfg, sampler, scheduler,
         g["24"] = {"class_type": "SageAttentionChunked",
                    "inputs": {"model": sampled_model, "groups": int(chunk_heads)}}
         sampled_model = ["24", 0]
+
+    # Sol-Attn: training-free sparse attention built specifically for H3.
+    # MUTUALLY EXCLUSIVE with chunk_heads and sage3 -- all three claim the same
+    # transformer_options["optimized_attention_override"] slot, so the last one
+    # applied wins and the others silently do nothing. MiniMax's ecosystem chart
+    # says sol-attn and sage-attn "stack"; at the ComfyUI node level they do not.
+    #
+    # It is an APPROXIMATION (sparse KV routing), so it needs a quality check
+    # against a dense baseline, not adoption on a speed number -- exactly how
+    # v4-exact-attn was handled.
+    if solattn:
+        g["25"] = {"class_type": "SolAttnMiniMaxH3Patcher",
+                   "inputs": {"model": sampled_model, "enabled": True,
+                              "tau": float(solattn.get("tau", 1.0)),
+                              "thresh_type": solattn.get("thresh", "diag"),
+                              "exact_mode": solattn.get("exact_mode", "off"),
+                              "dense_steps": int(solattn.get("dense_steps", 0)),
+                              "step_off": int(solattn.get("step_off", 0))}}
+        sampled_model = ["25", 0]
 
     # Step-caching: reuse a denoise step's output when the trajectory has moved
     # less than reuse_threshold. H3 is guidance-distilled but NOT step-distilled,

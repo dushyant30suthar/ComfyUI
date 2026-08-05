@@ -84,6 +84,21 @@ int8 `convrot` builds — **not** the NVFP4 ones; int8 measurably holds shape
 better through fast motion). The other files in `models/` belong to LTX/Wan and
 are unrelated to H3.
 
+**Third-party custom nodes are NOT vendored** — they carry their own `.git`, so
+they are pinned here by commit instead. Ours (`sage_chunked`, `h3_dualpipe`,
+`sage3_select`) ARE in the repo, force-added past the `custom_nodes/` ignore.
+
+```bash
+cd custom_nodes
+git clone https://github.com/KingGore/ComfyUI_sol-attn_Blackwell.git
+git -C ComfyUI_sol-attn_Blackwell checkout a8a9584e1ed700f2ce3b7569048cab0071bbf58a
+```
+
+Sol-Attn is sparse attention built for H3. It needs no pip install and imports
+cleanly on sm_120. **It is mutually exclusive with our `sage_chunked` node** —
+both claim `transformer_options["optimized_attention_override"]`, so whichever
+is applied last wins and the other silently does nothing.
+
 **A local source fix that a `git pull` on master would destroy:**
 `comfy/ldm/minimax/audio_vae.py` carries a one-line correction (`.to(x.dtype)`
 was missing `device=`). It is committed on this branch. **Never work on master.**
