@@ -221,8 +221,9 @@ def main():
                 fh.write(json.dumps(rec) + "\n")
             if ok:
                 print(f"done in {secs:.0f}s ({secs/60:.1f} min)")
+                sub = args.name.rsplit("/", 1)[0] if "/" in args.name else "video"
                 for f in files:
-                    print(f"  {os.path.join(ROOT,'output','video',f)}")
+                    print(f"  {os.path.join(ROOT, 'output', sub, f)}")
             else:
                 print(f"FAILED: {rec.get('detail','')[:200]}")
             return 0 if ok else 1

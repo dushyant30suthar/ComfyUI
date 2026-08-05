@@ -100,7 +100,10 @@ for f in "$TMP"/*.txt; do
     ${IMG:+--first-frame "$IMG"} ${REF:+--ref "$REF" --ref-size "$REFSIZE"} "${ARGS[@]}" \
     >> "$OUT" 2>&1
   rc=$?
-  fb=$(grep -c "using pytorch attention instead" bench/gen-server.log 2>/dev/null || echo 0)
+  # grep -c PRINTS "0" and EXITS 1 when there are no matches, so a `|| echo 0`
+  # fires as well and yields "0\n0", which [[ -gt ]] cannot parse.
+  fb=$(grep -c "using pytorch attention instead" bench/gen-server.log 2>/dev/null | head -1)
+  [[ "$fb" =~ ^[0-9]+$ ]] || fb=0
   if [[ $rc -eq 0 ]] && ls output/${name}_*.mp4 >/dev/null 2>&1; then
     ok=$((ok+1)); echo "      OK$([[ $fb -gt 0 ]] && echo "  WARNING: $fb attention fallbacks — ran the slow path")" | tee -a "$OUT"
     # Re-cut the film after every shot. Costs a couple of seconds (stream copy,
