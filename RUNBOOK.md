@@ -15,6 +15,12 @@ file is only what to type and what must be true._
 Push to `fork`. Pushing this branch to `origin` would be a pull request against
 upstream ComfyUI, which is not what you want.
 
+**The three generation modes each have a complete flow document** — setup,
+input preparation, prompt rules, verification, cost and traps:
+[`FLOW-T2V.md`](FLOW-T2V.md) · [`FLOW-I2V.md`](FLOW-I2V.md) · [`FLOW-R2V.md`](FLOW-R2V.md).
+Start there. Note that i2v seeds and r2v references are prepared in OPPOSITE
+ways, and getting that backwards silently degrades the result.
+
 **What has NOT been tested yet is in [`OPEN-LEVERS.md`](OPEN-LEVERS.md)**, ranked
 by expected value over cost, with the closed ones kept so they are not
 re-litigated.
