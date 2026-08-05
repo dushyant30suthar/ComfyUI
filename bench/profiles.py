@@ -17,6 +17,8 @@ without re-deriving anything.
   REFERENCE   — matches the upstream template; the quality bar, not the default
   SUPERSEDED  — kept for provenance; `retired_by` says what beat it
   CANDIDATE   — under measurement, do not use for production
+  REJECTED    — measured and not worth it; `verdict` says why, so it stays
+                measured rather than becoming folklore someone re-tests
 """
 import argparse, json, sys
 
@@ -81,12 +83,12 @@ PROFILES = {
         """),
 
     "v4-exact-attn": dict(
-        status="CANDIDATE",
-        added="2026-08-05",
+        status="REJECTED",
+        added="2026-08-05", rejected="2026-08-05",
         flags=["--sampler", "res_multistep", "--steps", "20", "--nocache"],
         patch="comfy/ldm/minimax/model.py:181 low_precision_attention=False",
         real_steps=20,
-        cost_124f="measuring", cost_362f="unknown",
+        cost_124f="1243 s", cost_362f="~103 min",
         summary="v3 plus opting the H3 DiT out of SageAttention's int8 QK path.",
         reasoning="""
             comfy/ldm/minimax/model.py:181 calls optimized_attention WITHOUT
@@ -105,6 +107,22 @@ PROFILES = {
 
             Requires a source patch, so it is not selectable by flags alone.
             See bench/sage-quality-test.sh.
+        """,
+        verdict="""
+            MEASURED AND REJECTED, 2026-08-05. 1243 s against v3-reference's
+            638 s -- 1.95x, exactly the cost of giving up SageAttention -- for no
+            visible quality gain. Side by side at 1:1 the two resolve the same
+            detail; D's framing differs slightly because changing the attention
+            numerics nudges the sampling trajectory, not because it is cleaner.
+
+            So the int8 QK path is NOT what was degrading our output. The noise
+            we were chasing was the first-order solver plus EasyCache, and
+            v2-fast already fixes it.
+
+            This is a load-bearing negative: SageAttention is the foundation of
+            15.1s at native on this box, and it is now measured as quality-safe
+            here rather than merely assumed to be. Issue #15263's pure-noise
+            failure is real but evidently not what this configuration hits.
         """),
 }
 
@@ -121,7 +139,7 @@ def show(name, p):
         print(f"  patch       {p['patch']}")
     print(f"  real steps  {p['real_steps']}")
     print(f"  cost        {p['cost_124f']} at 124f   |   {p['cost_362f']} at 362f native")
-    for key in ("reasoning", "retired_by"):
+    for key in ("reasoning", "retired_by", "verdict"):
         if p.get(key):
             print(f"  {key}:")
             for line in p[key].strip().split("\n"):
@@ -155,6 +173,8 @@ def main():
     show(a.name, p)
     if p["status"] == "SUPERSEDED":
         print("\n  WARNING: superseded. Use it only to reproduce old output.")
+    if p["status"] == "REJECTED":
+        print("\n  WARNING: measured and rejected. Do not re-test without reading `verdict`.")
     return 0
 
 
