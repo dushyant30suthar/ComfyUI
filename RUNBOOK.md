@@ -212,7 +212,12 @@ Three rules learned the hard way, each of which cost a render:
 - **Frame the subject large when using `--ref`.** Identity you paid for is
   invisible in a shot where the subject is forty pixels wide.
 - **A shot that will be chained FROM should end wide**, not on a push-in. You
-  don't choose the frame you hand to the next clip.
+  don't choose the frame you hand to the next clip. (Independently confirmed by
+  the community multishot workflow: "end every shot on what the next shot expects
+  to see".)
+- **Match dialogue length to shot length.** Speech runs ~2.5 words/second, so a
+  15.1 s shot holds roughly **38 words**. Write less and the model invents sound
+  to fill the dead air.
 
 ---
 

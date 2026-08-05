@@ -145,23 +145,34 @@ than a good likeness in the close-ups.
 
 ---
 
-## 6. 🟡 The multishot workflow — compare against ours
+## ~~6.~~ ⚫ Multishot workflow — DONE 2026-08-05: same mechanism, we are ahead
 
-**Cost to test:** ~1 h to read, ~30 min to run · **Payoff:** possibly a better seam
+**Result:** nothing to adopt mechanically; two prompting notes taken.
 
-MiniMax's chart lists a community "Multishot workflow — chains shots past the 15 s
-single-clip limit, up to 30 s with audio". That is precisely what
-`bench/lastframe.sh` does.
+The community multishot workflow (Civitai 2833322, listed on MiniMax's own
+ecosystem chart) chains shots exactly the way we do: *"chaining feeds the
+previous shot's last frame through the encoder's vision path."* Single last
+frame, same as `bench/lastframe.sh`.
 
-MEASURED for ours: 8.6/255 at the join, a small but visible reframe; consistent
-at 8.62 and 8.71 across two different chains, so it does not compound.
+Two ways we are slightly ahead:
 
-Worth reading theirs specifically for **how they condition the join**. If they
-overlap latents or condition on several frames rather than seeding from one, their
-seam should beat ours and we should adopt it. If they seed from a single frame
-too, we already know exactly what that costs and can stop wondering.
+- They publish **no seam measurement at all**, only qualitative advice. Ours is
+  MEASURED at 8.6/255, consistent at 8.62 and 8.71 across two different chains,
+  so it does not compound.
+- We take the **second**-to-last frame deliberately, because the final frame of a
+  VAE-decoded clip is the likeliest to carry temporal-tile edge artifacts and any
+  artifact there seeds the whole next clip. They do not mention this.
 
----
+**Independent confirmation of our own rule.** Their guidance — *"to avoid objects
+morphing at seams, end every shot on what the next shot expects to see"* — is the
+same conclusion we reached from shot 8 handing shot 9 an unusable extreme
+push-in. Two routes to the same rule is worth more than either alone.
+
+**One genuinely new thing, adopted:** *"speech runs about 2.5 words/second, so
+dialogue length should match shot length, or the model invents sound to fill dead
+air."* We have never considered audio timing when writing prompts. At 15.1 s that
+is roughly **38 words of speech** — worth stating explicitly in any prompt with
+dialogue.
 
 ## 7. 🔴 cfg > 1.0
 
