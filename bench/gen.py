@@ -109,6 +109,13 @@ def main():
                     help="'match' scales references to the generation's pixel area; 'max' uses "
                          "a 2048px short edge for best identity fidelity and is several times "
                          "slower, because reference tokens ride through every sampling step")
+    ap.add_argument("--sampler", default="res_multistep",
+                    help="res_multistep is the OFFICIAL H3 default and what the shipped "
+                         "ComfyUI r2v template uses. It is second order, so its local error "
+                         "per step is the square of euler's: ~20 steps accumulate what euler "
+                         "accumulates in 40-50, at the same one DiT call per step. euler here "
+                         "is a benchmark-harness inheritance, not a considered choice")
+    ap.add_argument("--scheduler", default="simple")
     ap.add_argument("--chunk", type=int, default=0, metavar="GROUPS",
                     help="run SageAttention over GROUPS head groups (custom_nodes/sage_chunked). "
                          "Exact — heads are independent. Cuts sage's int8 scratch to ~1/GROUPS, "
@@ -159,6 +166,7 @@ def main():
         print("at most 9 --ref images and 3 --ref-video")
         return 2
     params = dict(matrix.PROBE, width=w, height=h, length=args.length, steps=args.steps,
+                  sampler=args.sampler, scheduler=args.scheduler,
                   cfg=1.0, prompt=prompt, seed=args.seed,
                   cache=None if args.nocache else "easy", cache_threshold=0.4,
                   tiled_decode=args.tiled, chunk_heads=args.chunk,
@@ -209,7 +217,7 @@ def main():
                      for kind in ("images", "video", "gifs", "audio")
                      for f in (out.get(kind) or []) if isinstance(f, dict) and f.get("filename")]
             secs = server_seconds(entry)
-            rec = {"ok": ok, "mode": mode, "server_s": secs, "files": files,
+            rec = {"ok": ok, "mode": mode, "sampler": args.sampler, "server_s": secs, "files": files,
                    "width": w, "height": h, "length": args.length, "steps": args.steps,
                    "seed": args.seed, "refs": refs, "ref_videos": rvids,
                    "first_frame": args.first_frame, "name": args.name,

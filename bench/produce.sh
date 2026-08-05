@@ -26,11 +26,24 @@ PROFILE="${2:-native}"
 PREFIX="${3:-batch}"   # subfolder under output/ — filename_prefix carries the path
 [[ -f "$PROMPTS" ]] || { echo "usage: produce.sh <prompts-file> [native|fast|draft|draft-short] [output-subfolder]"; exit 64; }
 
+# All profiles use res_multistep and NO cache, measured 2026-08-05.
+#
+# The old `fast` profile was euler + EasyCache, which bought its speed by
+# skipping 11 of 20 steps -- 9 first-order steps in total. Against it,
+# res_multistep at 10 steps with no cache cost 8.6% more time (352s vs 324s at
+# 124 frames) and was not close on quality: A/B at seed 777 showed euler+cache
+# rendering distant architecture as blocky checkerboard artifact where
+# res_multistep resolved windows and clean edges.
+#
+# A second-order solver's local error per step is the SQUARE of a first-order
+# one's, so ~20 res_multistep steps accumulate what euler accumulates in 40-50,
+# at one DiT call per step either way. EasyCache is separately an approximation
+# tier -- upstream guidance is that its output "must not be used as a reference".
 case "$PROFILE" in
   native)      ARGS=(--length 362 --steps 20 --nocache --chunk 4 --tiled 32 --lowmem) ;;
-  fast)        ARGS=(--length 362 --steps 20            --chunk 4 --tiled 32 --lowmem) ;;
-  draft)       ARGS=(--length 362 --steps 20 --draft    --chunk 4 --tiled 32 --lowmem) ;;
-  draft-short) ARGS=(--length 124 --steps 20 --draft) ;;
+  fast)        ARGS=(--length 362 --steps 10 --nocache --chunk 4 --tiled 32 --lowmem) ;;
+  draft)       ARGS=(--length 362 --steps 10 --nocache --draft --chunk 4 --tiled 32 --lowmem) ;;
+  draft-short) ARGS=(--length 124 --steps 10 --nocache --draft) ;;
   *) echo "unknown profile: $PROFILE"; exit 64 ;;
 esac
 
