@@ -24,28 +24,32 @@ cd "$(dirname "$0")/.."
 PROMPTS="${1:-}"
 PROFILE="${2:-native}"
 PREFIX="${3:-batch}"   # subfolder under output/ — filename_prefix carries the path
-[[ -f "$PROMPTS" ]] || { echo "usage: produce.sh <prompts-file> [native|fast|draft|draft-short] [output-subfolder]"; exit 64; }
+[[ -f "$PROMPTS" ]] || { echo "usage: produce.sh <prompts-file> [profile] [output-subfolder]"; .venv/bin/python bench/profiles.py; exit 64; }
 
-# All profiles use res_multistep and NO cache, measured 2026-08-05.
+# Profiles live in bench/profiles.py, versioned and never overwritten -- each
+# carries the measurement that justified it and, when retired, the one that beat
+# it. `bench/profiles.py` with no argument lists them and names the CURRENT one.
 #
-# The old `fast` profile was euler + EasyCache, which bought its speed by
-# skipping 11 of 20 steps -- 9 first-order steps in total. Against it,
-# res_multistep at 10 steps with no cache cost 8.6% more time (352s vs 324s at
-# 124 frames) and was not close on quality: A/B at seed 777 showed euler+cache
-# rendering distant architecture as blocky checkerboard artifact where
-# res_multistep resolved windows and clean edges.
-#
-# A second-order solver's local error per step is the SQUARE of a first-order
-# one's, so ~20 res_multistep steps accumulate what euler accumulates in 40-50,
-# at one DiT call per step either way. EasyCache is separately an approximation
-# tier -- upstream guidance is that its output "must not be used as a reference".
+# Aliases below map the old names onto versions so existing scripts keep working
+# and it stays obvious which version they resolved to.
 case "$PROFILE" in
-  native)      ARGS=(--length 362 --steps 20 --nocache --chunk 4 --tiled 32 --lowmem) ;;
-  fast)        ARGS=(--length 362 --steps 10 --nocache --chunk 4 --tiled 32 --lowmem) ;;
-  draft)       ARGS=(--length 362 --steps 10 --nocache --draft --chunk 4 --tiled 32 --lowmem) ;;
-  draft-short) ARGS=(--length 124 --steps 10 --nocache --draft) ;;
-  *) echo "unknown profile: $PROFILE"; exit 64 ;;
+  native)      PROFILE=v3-reference ;;
+  fast)        PROFILE=v2-fast ;;
+  draft)       PROFILE=v2-fast; EXTRA=(--draft) ;;
+  draft-short) PROFILE=v2-fast; EXTRA=(--draft); LENGTH=124 ;;
 esac
+LENGTH="${LENGTH:-362}"
+EXTRA=("${EXTRA[@]:-}")
+read -r -a PFLAGS <<< "$(.venv/bin/python bench/profiles.py "$PROFILE" --flags --long 2>&1)" || {
+  echo "unknown profile: $PROFILE"; .venv/bin/python bench/profiles.py; exit 64; }
+[[ "${PFLAGS[0]}" == "--sampler" ]] || { echo "profile lookup failed: ${PFLAGS[*]}"; exit 64; }
+ARGS=(--length "$LENGTH" "${PFLAGS[@]}")
+[[ -n "${EXTRA[0]:-}" ]] && ARGS+=("${EXTRA[@]}")
+STATUS=$(.venv/bin/python -c "
+import sys; sys.path.insert(0,'bench'); import profiles
+print(profiles.PROFILES['$PROFILE']['status'])")
+[[ "$STATUS" == "SUPERSEDED" ]] && echo "WARNING: $PROFILE is SUPERSEDED — see bench/profiles.py"
+
 
 OUT=bench/h3-logs/produce-$(date +%Y%m%d-%H%M%S).log
 mkdir -p bench/h3-logs
@@ -63,6 +67,7 @@ COUNT=$(ls "$TMP" 2>/dev/null | wc -l)
 [[ "$COUNT" -gt 0 ]] || { echo "no prompts found in $PROMPTS"; exit 64; }
 
 echo "=== $(date +%H:%M:%S)  batch start: $COUNT prompts, profile=$PROFILE ===" | tee -a "$OUT"
+echo "    profile: $PROFILE [$STATUS]" | tee -a "$OUT"
 echo "    flags: ${ARGS[*]}" | tee -a "$OUT"
 
 i=0; ok=0; fail=0

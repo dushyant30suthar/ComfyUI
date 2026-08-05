@@ -17,30 +17,149 @@ upstream ComfyUI.
 
 ---
 
+## 0. Your workflow, script to final
+
+```
+  shot list (.txt)  ->  produce.sh  ->  storyboard.py  ->  fix shots  ->  assemble.sh
+     what to make       render it       judge it         re-render      cut the film
+```
+
+**1 — Write the shot list.** One text file. Prompts separated by blank lines,
+`#` for comments, directives on the first lines of a prompt. This file IS the
+film; everything else is mechanical.
+
+```
+@ref: j-car-dirt-track.png,j-car-lane.png
+<Picture 1> and <Picture 2> show the same car: a silver-grey hatchback...
+Camera: slow aerial descent. Timing: the sun crests at two-thirds.
+Style: cinematic, ochre and warm white. Audio: wind over dry grass.
+
+@chain
+The car begins to roll forward, dust lifting behind it. Camera: the aerial
+rises and swings behind. Timing: the plume catches the light near the end.
+```
+
+**2 — Pick a profile.** `bench/profiles.py` lists them with cost and reasoning.
+`v2-fast` unless you have a reason.
+
+**3 — Render.** One command, unattended, resumable, re-cuts after every shot.
+
+```bash
+bench/produce.sh myshots.txt v2-fast myfilm
+```
+
+**4 — Judge.** Do not scrub three minutes of video.
+
+```bash
+.venv/bin/python bench/storyboard.py myfilm      # every shot, start/middle/end
+```
+
+**5 — Fix individual shots.** Delete the bad one, re-render just it, re-cut.
+Keep the old take — a retake is not automatically better.
+
+```bash
+mkdir -p output/myfilm/takes
+cp output/myfilm/shot-004_*.mp4 output/myfilm/takes/shot-004_take1.mp4
+rm output/myfilm/shot-004_*.mp4
+.venv/bin/python bench/gen.py --prompt-file fixed.txt --name myfilm/shot-004 \
+  --length 362 $(.venv/bin/python bench/profiles.py v2-fast --flags --long)
+bench/assemble.sh myfilm
+```
+
+**6 — Assemble.** `produce.sh` already does this after every shot. Run it
+manually after a retake. Add dissolves only if a chained cut reads badly.
+
+```bash
+bench/assemble.sh myfilm                                   # hard cuts, stream copy, seconds
+.venv/bin/python bench/assemble-dissolve.py myfilm         # dissolves at chained joins, re-encodes
+```
+
+---
+
+## 0b. What you control at prompt time
+
+**Choosing the mode is the real decision.** Everything else is a dial.
+
+| you want | use | why |
+|---|---|---|
+| a place you have no photo of | *(nothing)* — t2v | prompt only |
+| this exact photo, moving | `--first-frame f.png` | frame 0 IS the photo |
+| this real subject somewhere new | `--ref a.png,b.png` | carries identity into a new scene |
+| longer than 15.1 s | `@chain` | seeds the next clip from this one's end |
+
+**The flags, grouped by what they're for:**
+
+| flag | default | what it decides |
+|---|---|---|
+| `--prompt` / `--prompt-file` | — | the shot |
+| `--length` | 124 | frames. Must satisfy `n % 17 == 5`: 124 (5.2 s), 209, 277, 311, 362 (15.1 s max) |
+| `--draft` | off | 960×544 instead of native 1344×768 |
+| `--seed` | 42 | change it to reroll the same prompt |
+| `--name` | gen | output name; a `/` in it writes to that subfolder |
+| **quality** | | |
+| `--sampler` | `res_multistep` | leave it. euler needs 40–50 steps for the same result |
+| `--steps` | 20 | real steps, since caching is off by default |
+| `--nocache` | — | already implied by the profiles; EasyCache costs fidelity |
+| **mode** | | |
+| `--first-frame` / `--last-frame` | — | i2v; both = interpolate between them |
+| `--ref` | — | r2v, up to 9 images. Address them as `<Picture 1>`… |
+| `--ref-video` | — | r2v from a rendered clip, up to 3 |
+| `--ref-size` | `match` | `max` is 2048 px, better identity, much slower, untested at 362 f |
+| **memory — REQUIRED past ~200 frames** | | |
+| `--chunk 4` | 0 | without it, attention silently falls back to a 3× slower path |
+| `--tiled 32` | 0 | without it the VAE decode exhausts host RAM *after* sampling succeeded |
+| `--lowmem` | off | evicts models between stages |
+
+Plus `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` in the environment for
+15.1 s at native. The profiles and `produce.sh` set all of the memory ones for
+you; you only need them when calling `gen.py` by hand.
+
+**Writing the prompt itself.** H3's documented order, and every part earns its
+place:
+
+```
+Subject -> Scene -> Action -> Camera -> Timing -> Style -> Audio
+```
+
+Name an explicit **camera move** and a **timing beat**. 15 s is long enough that
+an unspecified shot drifts or stalls halfway. Audio is generated too — describe
+it or you get whatever the model infers.
+
+Three rules learned the hard way, each of which cost a render:
+
+- **Say what must stay VISIBLE**, not only what an effect does. "The mist
+  thickens and hides the ridge" produced a blank grey screen.
+- **Frame the subject large when using `--ref`.** Identity you paid for is
+  invisible in a shot where the subject is forty pixels wide.
+- **A shot that will be chained FROM should end wide**, not on a push-in. You
+  don't choose the frame you hand to the next clip.
+
+---
+
 ## 1. Just make me a clip
 
 ```bash
 cd ~/Projects/comfyui
 
-# best quality this machine can do — 15.1s, native, all 20 steps, ~57 min
+# see the profiles, what they cost and why
+.venv/bin/python bench/profiles.py
+
+# everyday: 15.1s native, res_multistep 10 real steps, ~29 min
 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
 bench/memguard.sh -- .venv/bin/python bench/gen.py \
-  --prompt "your prompt here" \
-  --length 362 --steps 20 --nocache --chunk 4 --tiled 32 --lowmem
+  --prompt "your prompt here" --length 362 \
+  $(.venv/bin/python bench/profiles.py v2-fast --flags --long)
 
-# everyday: 15.1s, native, cache on (~10 real steps), ~30 min
+# hero shot: 20 real steps, the upstream reference config, ~53 min
 PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
 bench/memguard.sh -- .venv/bin/python bench/gen.py \
-  --prompt "your prompt here" \
-  --length 362 --steps 20 --chunk 4 --tiled 32 --lowmem
+  --prompt "your prompt here" --length 362 \
+  $(.venv/bin/python bench/profiles.py v3-reference --flags --long)
 
-# draft, for iterating on a shot — 15.1s at 960x544, ~10 min
+# iterating on wording: 5.2s, ~1 min, same sampler so it is representative
 bench/memguard.sh -- .venv/bin/python bench/gen.py \
-  --prompt "your prompt here" \
-  --length 362 --steps 20 --draft --tiled 32 --lowmem
-
-# short and quick — 5.2s native, ~6 min
-bench/memguard.sh -- .venv/bin/python bench/gen.py --prompt "your prompt here"
+  --prompt "your prompt here" --length 124 --draft \
+  --sampler res_multistep --steps 10 --nocache
 ```
 
 Use `--prompt-file some.txt` for long prompts. Output lands in
