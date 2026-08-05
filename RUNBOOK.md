@@ -6,14 +6,90 @@ file is only what to type and what must be true._
 
 **Recovery points**
 
-| repo | commit | branch |
+| repo | remote | branch |
 |---|---|---|
-| `~/Projects/comfyui` | `694abe26` | `h3-2gpu-v0.30.1` |
-| `~/Projects/opencode-llama.cpp` | `5689935` | `main` |
+| `~/Projects/comfyui` | `fork` = github.com/dushyant30suthar/ComfyUI | `h3-2gpu-v0.30.1` |
+| `~/Projects/opencode-llama.cpp` | `origin` = github.com/dushyant30suthar/opencode-llama.cpp | `main` |
+
+**`origin` in the comfyui repo is UPSTREAM comfyanonymous/ComfyUI, not yours.**
+Push to `fork`. Pushing this branch to `origin` would be a pull request against
+upstream ComfyUI, which is not what you want.
 
 If anything is ever lost: `git checkout h3-2gpu-v0.30.1` in comfyui restores
 every node, tool and config below. **Never work on master** — it is stock
 upstream ComfyUI.
+
+---
+
+## 0a. Rebuilding this from nothing
+
+Everything below is what git CANNOT give you. The repo has the code, the nodes,
+the tooling and this document; it does not have 72 GB of weights, the Python
+environment, or the knowledge of which versions actually work. That is here.
+
+**Verified working environment** (captured 2026-08-05 from the box that rendered
+the Udaipur→Himachal film):
+
+| | version |
+|---|---|
+| ComfyUI | 0.30.1 |
+| Python | 3.12.12 |
+| torch | **2.13.0+cu130** (CUDA 13.0) |
+| sageattention | **2.2.0** |
+| triton | 3.7.1 |
+| numpy / safetensors / transformers | 2.5.1 / 0.8.0 / 5.14.1 |
+| comfyui-frontend-package | 1.47.12 |
+| comfyui-workflow-templates | 0.11.27 |
+| NVIDIA driver | 610.43.03 |
+| GPU | 2× RTX 5060 Ti 16 GB, **sm_120** (Blackwell) |
+| host RAM | 31 GB |
+
+**`sageattention` and `triton` are NOT in `requirements.txt`** — they are
+installed by hand and everything in this runbook depends on sage being present.
+A fresh `pip install -r requirements.txt` gives you a ComfyUI that runs H3 at
+roughly a third of the speed and never tells you why.
+
+```bash
+python3.12 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/pip install sageattention==2.2.0 triton==3.7.1
+```
+
+sm_120 is recent enough that torch/sage wheels must match it; older sage builds
+compile but produce garbage on Blackwell.
+
+**Model files** — 72 GB, none in git. The tree must look exactly like this,
+because the filenames are hardcoded in `bench/matrix.py`:
+
+```
+models/diffusion_models/minimax_h3_fl2va_pruned_int8_convrot.safetensors   20G   t2v + i2v
+models/diffusion_models/minimax_h3_ref2va_pruned_int8_convrot.safetensors  20G   r2v
+models/text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors          15G
+models/vae/minimax_h3_video_vae_fp16.safetensors                          4.9G
+models/vae/minimax_h3_audio_vae_fp32.safetensors                          578M
+```
+
+Get them from the Comfy-Org MiniMax H3 repackaged repo on Hugging Face (the
+int8 `convrot` builds — **not** the NVFP4 ones; int8 measurably holds shape
+better through fast motion). The other files in `models/` belong to LTX/Wan and
+are unrelated to H3.
+
+**A local source fix that a `git pull` on master would destroy:**
+`comfy/ldm/minimax/audio_vae.py` carries a one-line correction (`.to(x.dtype)`
+was missing `device=`). It is committed on this branch. **Never work on master.**
+
+**Verify a rebuild actually works** before trusting it:
+
+```bash
+.venv/bin/python -c "import torch,sageattention; \
+  print(torch.__version__, torch.cuda.get_device_capability(0))"   # expect 2.13.0+cu130 (12,0)
+bench/memguard.sh -- .venv/bin/python bench/gen.py --prompt "a still lake at dawn" \
+  --length 124 --draft --sampler res_multistep --steps 10 --nocache
+grep -c "using pytorch attention instead" bench/gen-server.log      # MUST be 0
+```
+
+If that last number is not 0, sage is not active and nothing else in this
+document will reproduce.
 
 ---
 
