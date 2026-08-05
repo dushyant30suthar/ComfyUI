@@ -15,6 +15,10 @@ file is only what to type and what must be true._
 Push to `fork`. Pushing this branch to `origin` would be a pull request against
 upstream ComfyUI, which is not what you want.
 
+**What has NOT been tested yet is in [`OPEN-LEVERS.md`](OPEN-LEVERS.md)**, ranked
+by expected value over cost, with the closed ones kept so they are not
+re-litigated.
+
 If anything is ever lost: `git checkout h3-2gpu-v0.30.1` in comfyui restores
 every node, tool and config below. **Never work on master** — it is stock
 upstream ComfyUI.
