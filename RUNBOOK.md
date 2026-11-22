@@ -102,6 +102,19 @@ git clone https://github.com/KingGore/ComfyUI_sol-attn_Blackwell.git
 git -C ComfyUI_sol-attn_Blackwell checkout a8a9584e1ed700f2ce3b7569048cab0071bbf58a
 ```
 
+```bash
+git clone https://github.com/robertvoy/ComfyUI-Distributed.git
+git -C ComfyUI-Distributed checkout 09c7a1c        # v1.7.1, 2026-11-15
+```
+
+ComfyUI-Distributed gives ONE dashboard and queue across both GPUs. Its
+`gpu_config.json` (in the node folder, not in git) registers the cuda:1 server
+(:8189) as worker `gpu1`; the cuda:0 server (:8188) is master. A workflow is
+load-balanced only if it contains a `DistributedCollector` with
+`load_balance=true`, and only when queued from the web UI or
+`POST /distributed/queue` — a plain `POST /prompt` runs on the master alone.
+Measured: 4 Qwen-Image 2.1 Turbo images in 31 s, both cards at 100%.
+
 Sol-Attn is sparse attention built for H3. It needs no pip install and imports
 cleanly on sm_120. **It is mutually exclusive with our `sage_chunked` node** —
 both claim `transformer_options["optimized_attention_override"]`, so whichever
