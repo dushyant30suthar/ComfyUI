@@ -22,6 +22,7 @@ is ~80% attention. An attention-backend win measured at PROBE length UNDERSTATES
 what it is worth at 15s. That is why phase A is also run at CONFIRM length
 regardless of how it ranks.
 """
+import os
 
 # ---------------------------------------------------------------------------
 # Geometry, straight out of comfy_extras/nodes_minimax_h3.py
@@ -45,11 +46,13 @@ def tokens(width, height, length):
     return t * (height // 32) * (width // 32) + 2 * round(fc / 24 * 40)
 
 
-FL2VA = "minimax_h3_fl2va_pruned_int8_convrot.safetensors"
-REF2VA = "minimax_h3_ref2va_pruned_int8_convrot.safetensors"
-ENCODER = "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"
-VIDEO_VAE = "minimax_h3_video_vae_fp16.safetensors"
-AUDIO_VAE = "minimax_h3_audio_vae_fp32.safetensors"
+# Overridable per run so a checkpoint/VAE A/B needs no code change, e.g.
+#   H3_FL2VA=minimax_h3_fl2va_pruned_w6a8.safetensors bench/gen.py ...
+FL2VA = os.environ.get("H3_FL2VA", "minimax_h3_fl2va_pruned_int8_convrot.safetensors")
+REF2VA = os.environ.get("H3_REF2VA", "minimax_h3_ref2va_pruned_int8_convrot.safetensors")
+ENCODER = os.environ.get("H3_ENCODER", "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors")
+VIDEO_VAE = os.environ.get("H3_VIDEO_VAE", "minimax_h3_video_vae_fp16.safetensors")
+AUDIO_VAE = os.environ.get("H3_AUDIO_VAE", "minimax_h3_audio_vae_fp32.safetensors")
 
 PROMPT = ("A slow dolly shot through a rain-soaked Tokyo alley at night, neon signs "
           "reflecting in puddles, steam rising from a ramen stall.")
