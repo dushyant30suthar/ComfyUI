@@ -51,7 +51,7 @@ def tokens(width, height, length):
 FL2VA = os.environ.get("H3_FL2VA", "minimax_h3_fl2va_pruned_w6a8.safetensors")
 REF2VA = os.environ.get("H3_REF2VA", "minimax_h3_ref2va_pruned_w6a8.safetensors")
 ENCODER = os.environ.get("H3_ENCODER", "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors")
-VIDEO_VAE = os.environ.get("H3_VIDEO_VAE", "minimax_h3_video_vae_fp16.safetensors")
+VIDEO_VAE = os.environ.get("H3_VIDEO_VAE", "minimax_h3_video_vae_int8_convrot.safetensors")
 AUDIO_VAE = os.environ.get("H3_AUDIO_VAE", "minimax_h3_audio_vae_fp32.safetensors")
 
 PROMPT = ("A slow dolly shot through a rain-soaked Tokyo alley at night, neon signs "
