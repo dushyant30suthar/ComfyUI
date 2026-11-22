@@ -8,7 +8,15 @@ file is only what to type and what must be true._
 
 | repo | remote | branch |
 |---|---|---|
-| `~/Projects/comfyui` | `fork` = github.com/dushyant30suthar/ComfyUI | `h3-2gpu-v0.30.1` |
+| `~/Projects/comfyui` | `fork` = github.com/dushyant30suthar/ComfyUI | **`h3-v0.46.2`** (current) · `h3-2gpu-v0.30.1` (previous) |
+
+**2026-11-22: moved to ComfyUI v0.46.2** (comfy-aimdo 0.6.0, comfy-kitchen
+0.2.41, frontend 1.59.6; torch/sage/triton unchanged). The audio-VAE local fix
+is gone — upstream covers it. `h3_dualpipe` placement is now idempotent, which
+fixes the `cuda:1 vbar OOM while rebinding` failure on a second sampler or a
+second prompt. Rollback: `git checkout h3-2gpu-v0.30.1` and
+`uv pip install --python .venv/bin/python -r .upgrade-backup/venv-freeze-v0.30.1-20261122.txt`.
+Tables below that cite v0.30.1 versions describe the previous branch.
 | `~/Projects/opencode-llama.cpp` | `origin` = github.com/dushyant30suthar/opencode-llama.cpp | `main` |
 
 **`origin` in the comfyui repo is UPSTREAM comfyanonymous/ComfyUI, not yours.**
