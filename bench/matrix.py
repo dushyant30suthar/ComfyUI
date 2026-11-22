@@ -48,8 +48,8 @@ def tokens(width, height, length):
 
 # Overridable per run so a checkpoint/VAE A/B needs no code change, e.g.
 #   H3_FL2VA=minimax_h3_fl2va_pruned_w6a8.safetensors bench/gen.py ...
-FL2VA = os.environ.get("H3_FL2VA", "minimax_h3_fl2va_pruned_int8_convrot.safetensors")
-REF2VA = os.environ.get("H3_REF2VA", "minimax_h3_ref2va_pruned_int8_convrot.safetensors")
+FL2VA = os.environ.get("H3_FL2VA", "minimax_h3_fl2va_pruned_w6a8.safetensors")
+REF2VA = os.environ.get("H3_REF2VA", "minimax_h3_ref2va_pruned_w6a8.safetensors")
 ENCODER = os.environ.get("H3_ENCODER", "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors")
 VIDEO_VAE = os.environ.get("H3_VIDEO_VAE", "minimax_h3_video_vae_fp16.safetensors")
 AUDIO_VAE = os.environ.get("H3_AUDIO_VAE", "minimax_h3_audio_vae_fp32.safetensors")
