@@ -167,7 +167,10 @@ def build_workflow(width, height, length, steps, cfg, sampler, scheduler,
                               "thresh_type": solattn.get("thresh", "diag"),
                               "exact_mode": solattn.get("exact_mode", "off"),
                               "dense_steps": int(solattn.get("dense_steps", 0)),
-                              "step_off": int(solattn.get("step_off", 0))}}
+                              # step_off is a FLOAT and sink_tokens an INT; the node
+                              # declares every input required, so all must be sent
+                              "step_off": float(solattn.get("step_off", 0.0)),
+                              "sink_tokens": int(solattn.get("sink_tokens", 0))}}
         sampled_model = ["25", 0]
 
     # Step-caching: reuse a denoise step's output when the trajectory has moved
